@@ -234,7 +234,7 @@ def get_credentials_oidc() -> Response:
         providers=[
             Provider(
                 id=settings.OIDC_ORGANISATION,
-                title="EGI Check-in",
+                title="Eurac Keycloak",
                 issuer=settings.OIDC_URL,
                 scopes=[
                     "openid",
