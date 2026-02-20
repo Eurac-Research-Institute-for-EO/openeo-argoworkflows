@@ -1,0 +1,61 @@
+# Helm values for the in-house OpenEO deployment on eosao42.eurac.edu
+# Applied via: helm upgrade openeo <chart-path> -n openeo -f deploy/values-inhouse.yaml
+
+global:
+  env:
+    alembicDir: "/opt/openeo_argoworkflows_api/psql"
+    apiDns: eosao42.eurac.edu
+    apiTLS: "true"
+    apiTitle: "OpenEO ArgoWorkflows"
+    apiDescription: "A K8S deployment of the openeo api for argoworkflows."
+    oidcUrl: "https://edp-portal.eurac.edu/auth/realms/edp"
+    oidcOrganisation: "eurac"
+    oidcPolicies: ""
+    stacCatalogueUrl: "https://stac.eurac.edu"
+    workspaceRoot: "/user_workspaces"
+    executorImage: "localhost:32000/openeo-executor-fixed:v31"
+    daskWorkerCores: "1"
+    daskWorkerMemory: "4"
+    daskWorkerLimit: "2"
+    daskClusterTimeout: "3600"
+
+replicaCount: 1
+
+image:
+  repository: yuvraj1989/openeo-argoworkflows-api
+  pullPolicy: IfNotPresent
+  tag: "eurac-custom-oidc-v3"
+
+postgresql:
+  enabled: true
+  image:
+    repository: bitnamilegacy/postgresql
+  auth:
+    username: "postgres"
+    password: "openeo123"
+    database: "postgres"
+  persistence:
+    size: "8Gi"
+
+redis:
+  image:
+    repository: bitnamilegacy/redis
+  persistence:
+    size: "8Gi"
+  replica:
+    replicaCount: 1
+
+persistence:
+  capacity: "8Gi"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+
+resources: {}
+
+autoscaling:
+  enabled: false
