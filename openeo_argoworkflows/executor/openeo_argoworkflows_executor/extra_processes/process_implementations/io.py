@@ -67,37 +67,50 @@ def load_collection(
     elif "proj:epsg" in example_item.properties.keys():
         crs = pyproj.CRS.from_epsg(example_item.properties["proj:epsg"])
 
+    # Initialize with defaults in case raster extension metadata is missing
+    resolution = None
+    nodata = None
+    dtype = None
+
     if raster.RasterExtension.has_extension(example_item):
         for asset in example_item.get_assets().values():
             if 'raster:bands' in asset.extra_fields.keys():
                 for band in asset.extra_fields['raster:bands']:
-                    if 'spatial_resolution' in band:
+                    if 'spatial_resolution' in band and resolution is None:
                         resolution = band['spatial_resolution']
-                    if 'nodata' in band:
+                    if 'nodata' in band and nodata is None:
                         nodata = band['nodata']
-                    if 'data_type' in band:
+                    if 'data_type' in band and dtype is None:
                         dtype = band['data_type']
             if resolution and nodata and dtype:
                 break
-    else:
-        crs_measurement = pyproj.CRS.from_wkt(crs).axis_info[0].unit_name
 
+    if resolution is None:
+        crs_measurement = crs.axis_info[0].unit_name if crs.axis_info else 'metre'
         if crs_measurement == 'metre':
             resolution = 10
         elif crs_measurement == 'degree':
             resolution = 0.0009
-        
+        else:
+            resolution = 10
+
     # TODO Need to tidy up the logic above.
-    kwargs = {}
+    load_kwargs = {}
     # TODO Need to ensure nodata belongs to the dtype
     if dtype:
-        kwargs["dtype"] = dtype
+        load_kwargs["dtype"] = dtype
 
         if "int" in dtype and isinstance(nodata, float):
             nodata = int(nodata)
 
     if nodata:
-        kwargs["nodata"] = nodata       
+        load_kwargs["nodata"] = nodata
+
+    # Pass user-specified bands to stac_load so the correct assets are selected.
+    # Without this, stac_load loads all available assets which may include
+    # non-data assets (thumbnails, previews) and ignores the user's band selection.
+    if bands is not None:
+        load_kwargs["bands"] = bands
 
     lazy_xarray = stac_load(
         result_items,
@@ -105,7 +118,7 @@ def load_collection(
         resolution=resolution,
         # TODO Add some way to decide chunks
         chunks={"x": 2048, "y": 2048},
-        **kwargs
+        **load_kwargs
     ).to_array(dim='bands')
 
     # Add some sort of clipping here to the original bounding box that was requested.
