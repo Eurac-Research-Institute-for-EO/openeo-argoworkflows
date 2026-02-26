@@ -121,60 +121,64 @@ def execute(process_graph, user_profile, dask_profile):
     result_files = [f["name"] for f in fs.listdir(results_path) if f["name"].endswith(".nc")]
 
     if result_files:
-        # Workaround for raster2stac bugs:
-        # Bug 1: generate_netcdf_stac() fails with file paths on HDF5-based NetCDF4 files
-        #        (xr.open_dataset() missing engine='netcdf4')
-        # Bug 2: _ensure_crs() does not detect CRS from CF grid_mapping variable (spatial_ref)
-        # Fix: open files explicitly and write CRS via rioxarray before passing datasets.
-        datasets = []
-        for filepath in result_files:
-            ds = xr.open_dataset(filepath, engine='netcdf4')
-            if ds.rio.crs is None:
-                # Read CRS from CF grid_mapping variable if present
-                # grid_mapping var may be in data_vars or coords
-                crs_wkt = None
-                for var in ds.data_vars:
-                    gm = ds[var].attrs.get("grid_mapping")
-                    if gm and gm in ds:
-                        crs_wkt = ds[gm].attrs.get("crs_wkt") or ds[gm].attrs.get("spatial_ref")
-                        if crs_wkt:
-                            break
-                if crs_wkt is None and "spatial_ref" in ds:
-                    crs_wkt = ds["spatial_ref"].attrs.get("crs_wkt") or ds["spatial_ref"].attrs.get("spatial_ref")
-                if crs_wkt:
-                    ds = ds.rio.write_crs(crs_wkt)
-            datasets.append(ds)
+        try:
+            # Workaround for raster2stac bugs:
+            # Bug 1: generate_netcdf_stac() fails with file paths on HDF5-based NetCDF4 files
+            #        (xr.open_dataset() missing engine='netcdf4')
+            # Bug 2: _ensure_crs() does not detect CRS from CF grid_mapping variable (spatial_ref)
+            # Fix: open files explicitly and write CRS via rioxarray before passing datasets.
+            datasets = []
+            for filepath in result_files:
+                ds = xr.open_dataset(filepath, engine='netcdf4')
+                if ds.rio.crs is None:
+                    # Read CRS from CF grid_mapping variable if present
+                    # grid_mapping var may be in data_vars or coords
+                    crs_wkt = None
+                    for var in ds.data_vars:
+                        gm = ds[var].attrs.get("grid_mapping")
+                        if gm and gm in ds:
+                            crs_wkt = ds[gm].attrs.get("crs_wkt") or ds[gm].attrs.get("spatial_ref")
+                            if crs_wkt:
+                                break
+                    if crs_wkt is None and "spatial_ref" in ds:
+                        crs_wkt = ds["spatial_ref"].attrs.get("crs_wkt") or ds["spatial_ref"].attrs.get("spatial_ref")
+                    if crs_wkt:
+                        ds = ds.rio.write_crs(crs_wkt)
+                datasets.append(ds)
 
-        # raster2stac expects a double-nested list when passing xarray Datasets:
-        # outer list = collection items, inner list = files for the same timestamp.
-        Raster2STAC(
-            data=[[ds] for ds in datasets],
-            collection_id=job_id,
-            description=f"openEO batch job results for job {job_id}",
-            collection_url=stac_api_url,
-            output_folder=stac_path,
-            s3_upload=False,
-        ).generate_netcdf_stac()
+            # raster2stac expects a double-nested list when passing xarray Datasets:
+            # outer list = collection items, inner list = files for the same timestamp.
+            Raster2STAC(
+                data=[[ds] for ds in datasets],
+                collection_id=job_id,
+                description=f"openEO batch job results for job {job_id}",
+                collection_url=stac_api_url,
+                output_folder=stac_path,
+                s3_upload=False,
+            ).generate_netcdf_stac()
 
-        for ds in datasets:
-            ds.close()
+            for ds in datasets:
+                ds.close()
 
-        # POST collection to STAC API
-        collection_file = f"{stac_path}/{job_id}.json"
-        if os.path.exists(collection_file):
-            with open(collection_file, "r") as f:
-                collection_dict = json.load(f)
-            requests.post(stac_api_url, json=collection_dict)
+            # POST collection to STAC API
+            collection_file = f"{stac_path}/{job_id}.json"
+            if os.path.exists(collection_file):
+                with open(collection_file, "r") as f:
+                    collection_dict = json.load(f)
+                requests.post(stac_api_url, json=collection_dict)
 
-        # POST each item to STAC API
-        items_csv = f"{stac_path}/inline_items.csv"
-        if os.path.exists(items_csv):
-            with open(items_csv, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        item_dict = json.loads(line)
-                        requests.post(f"{stac_api_url.rstrip('/')}/{job_id}/items", json=item_dict)
+            # POST each item to STAC API
+            items_csv = f"{stac_path}/inline_items.csv"
+            if os.path.exists(items_csv):
+                with open(items_csv, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            item_dict = json.loads(line)
+                            requests.post(f"{stac_api_url.rstrip('/')}/{job_id}/items", json=item_dict)
+
+        except Exception as e:
+            logger.warning(f"STAC publishing failed for job {job_id}, results are still available: {e}")
 
 
 cli.add_command(execute)
