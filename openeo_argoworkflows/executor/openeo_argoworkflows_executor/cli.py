@@ -106,51 +106,79 @@ def execute(process_graph, user_profile, dask_profile):
         # Can call shutdown on previously closed clusters.
         dask_cluster.shutdown()
 
-    # TODO Time to generate STAC
-    from pystac import Asset, Collection, Extent, SpatialExtent, TemporalExtent, layout
+    import json
+    import requests
+    import xarray as xr
+    from raster2stac import Raster2STAC
 
+    job_id = openeo_parameters.user_profile.OPENEO_JOB_ID
+    results_path = str(openeo_parameters.user_profile.results_path)
+    stac_path = str(openeo_parameters.user_profile.stac_path)
+    stac_api_url = os.environ.get("OPENEO_RESULTS_STAC_URL", "https://stac.openeo.eurac.edu/")
+
+    # Collect all NetCDF result files
     fs = fsspec.filesystem(protocol="file")
+    result_files = [f["name"] for f in fs.listdir(results_path) if f["name"].endswith(".nc")]
 
-    output_collection = Collection(
-        id=openeo_parameters.user_profile.OPENEO_JOB_ID,
-        description=f"The STAC Collection representing the output of job {openeo_parameters.user_profile.OPENEO_JOB_ID}",
-        extent=Extent(
-            SpatialExtent([None, None, None, None]), TemporalExtent([None, None])
-        ),
-    )
+    if result_files:
+        try:
+            # Workaround for raster2stac bugs:
+            # Bug 1: generate_netcdf_stac() fails with file paths on HDF5-based NetCDF4 files
+            #        (xr.open_dataset() missing engine='netcdf4')
+            # Bug 2: _ensure_crs() does not detect CRS from CF grid_mapping variable (spatial_ref)
+            # Fix: open files explicitly and write CRS via rioxarray before passing datasets.
+            datasets = []
+            for filepath in result_files:
+                ds = xr.open_dataset(filepath, engine='netcdf4')
+                if ds.rio.crs is None:
+                    # Read CRS from CF grid_mapping variable if present
+                    # grid_mapping var may be in data_vars or coords
+                    crs_wkt = None
+                    for var in ds.data_vars:
+                        gm = ds[var].attrs.get("grid_mapping")
+                        if gm and gm in ds:
+                            crs_wkt = ds[gm].attrs.get("crs_wkt") or ds[gm].attrs.get("spatial_ref")
+                            if crs_wkt:
+                                break
+                    if crs_wkt is None and "spatial_ref" in ds:
+                        crs_wkt = ds["spatial_ref"].attrs.get("crs_wkt") or ds["spatial_ref"].attrs.get("spatial_ref")
+                    if crs_wkt:
+                        ds = ds.rio.write_crs(crs_wkt)
+                datasets.append(ds)
 
-    collection_href = str(
-            openeo_parameters.user_profile.stac_path / f"{output_collection.id}_collection.json"
-        )
-    output_collection.set_self_href(collection_href)
+            # raster2stac expects a double-nested list when passing xarray Datasets:
+            # outer list = collection items, inner list = files for the same timestamp.
+            Raster2STAC(
+                data=[[ds] for ds in datasets],
+                collection_id=job_id,
+                description=f"openEO batch job results for job {job_id}",
+                collection_url=stac_api_url,
+                output_folder=stac_path,
+                s3_upload=False,
+            ).generate_netcdf_stac()
 
-    from openeo_argoworkflows_executor.stac import create_stac_item
+            for ds in datasets:
+                ds.close()
 
-    for file in fs.listdir(str(openeo_parameters.user_profile.results_path)):
-        filepath = file["name"]
+            # POST collection to STAC API
+            collection_file = f"{stac_path}/{job_id}.json"
+            if os.path.exists(collection_file):
+                with open(collection_file, "r") as f:
+                    collection_dict = json.load(f)
+                requests.post(stac_api_url, json=collection_dict)
 
-        item = create_stac_item(filepath)
+            # POST each item to STAC API
+            items_csv = f"{stac_path}/inline_items.csv"
+            if os.path.exists(items_csv):
+                with open(items_csv, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            item_dict = json.loads(line)
+                            requests.post(f"{stac_api_url.rstrip('/')}/{job_id}/items", json=item_dict)
 
-        item.set_parent(output_collection)
-        item_href = str(
-            openeo_parameters.user_profile.stac_path / f"{item.id}.json"
-        )
-        item.set_self_href(item_href)
-
-        tmp_asset = Asset(
-                title=item.id,
-                href=str(filepath),
-                roles=["data"]
-            )
-    
-        output_collection.add_asset(item.id, tmp_asset)
-
-        output_collection.add_item(item, strategy=layout.AsIsLayoutStrategy())
-
-        item.save_object()
-
-    output_collection.update_extent_from_items()
-    output_collection.save_object()
+        except Exception as e:
+            logger.warning(f"STAC publishing failed for job {job_id}, results are still available: {e}")
 
 
 cli.add_command(execute)
