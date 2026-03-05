@@ -20,8 +20,9 @@ RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/
 RUN poetry install --only main
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
-# Install deps first (with full dep resolution), then raster2stac itself with --no-deps to skip pystac
-RUN $VIRTUAL_ENV/bin/pip install requests s3fs rio-stac kerchunk ujson h5netcdf zarr && \
+# Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
+RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs numpy \
+        pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray zarr requests && \
     $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
 
 ########################################################################################################################
