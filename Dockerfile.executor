@@ -1,0 +1,44 @@
+FROM python:3.11-slim as base
+
+WORKDIR /opt
+ARG POETRY_VERSION="1.8.3"
+
+ENV POETRY_VIRTUALENVS_IN_PROJECT 1
+ENV POETRY_HOME=/opt/poetry
+ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
+
+COPY ./openeo_argoworkflows/executor/README.md ./openeo_argoworkflows/executor/pyproject.toml ./openeo_argoworkflows/executor/poetry.lock /opt/
+
+RUN python3 -m venv $VIRTUAL_ENV && \
+    $VIRTUAL_ENV/bin/pip install -U pip setuptools && \
+    $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION}
+
+ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
+
+RUN poetry install --only main
+
+########################################################################################################################
+FROM python:3.11-slim-bookworm AS prod
+
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+WORKDIR /opt/openeo_argoworkflows_executor
+
+COPY --from=base --chown=${USER_ID}:${GROUP_ID} /opt/openeo_argoworkflows_executor/.venv /opt/openeo_argoworkflows_executor/.venv
+COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows/executor/openeo_argoworkflows_executor /opt/openeo_argoworkflows_executor
+
+RUN ln -sf /usr/local/bin/python /opt/openeo_argoworkflows_executor/.venv/bin/python \
+    && ln -sf /usr/local/bin/python3 /opt/openeo_argoworkflows_executor/.venv/bin/python3 \
+    && groupadd -g ${GROUP_ID} -o executor \
+    && useradd -m -u ${USER_ID} -g ${GROUP_ID} -o -s /bin/bash executor
+
+ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV DASK_GATEWAY_SERVER="http://traefik-openeo-dask-gateway.openeo.svc.cluster.local:80"
+
+USER ${USER_ID}
+
+CMD ["openeo_executor"]
