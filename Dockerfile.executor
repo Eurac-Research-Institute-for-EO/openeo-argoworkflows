@@ -33,6 +33,8 @@ WORKDIR /opt/openeo_argoworkflows_executor
 COPY --from=base --chown=${USER_ID}:${GROUP_ID} /opt/openeo_argoworkflows_executor/.venv /opt/openeo_argoworkflows_executor/.venv
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows/executor/openeo_argoworkflows_executor /opt/openeo_argoworkflows_executor
 
+RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
+
 RUN ln -sf /usr/local/bin/python /opt/openeo_argoworkflows_executor/.venv/bin/python \
     && ln -sf /usr/local/bin/python3 /opt/openeo_argoworkflows_executor/.venv/bin/python3 \
     && groupadd -g ${GROUP_ID} -o executor \
