@@ -1,9 +1,9 @@
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 WORKDIR /opt
 ARG POETRY_VERSION="1.8.3"
 
-ENV POETRY_VIRTUALENVS_IN_PROJECT 1
+ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 ENV POETRY_HOME=/opt/poetry
 ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
 
@@ -18,6 +18,9 @@ ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
 
 RUN poetry install --only main
+
+# Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
+RUN $VIRTUAL_ENV/bin/pip install --no-deps raster2stac requests
 
 ########################################################################################################################
 FROM python:3.11-slim-bookworm AS prod
