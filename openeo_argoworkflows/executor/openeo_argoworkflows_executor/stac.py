@@ -43,6 +43,51 @@ def create_stac_item(href: str) -> Item:
 
     with xr.open_dataset(href) as dataset:
         crs = dataset.rio.crs
+
+        # Fallback: try reading CRS from dataset attributes or spatial_ref coordinate
+        if crs is None:
+            # Try grid_mapping attribute on data variables
+            for var in dataset.data_vars:
+                gm = dataset[var].attrs.get("grid_mapping")
+                if gm and gm in dataset.coords:
+                    crs_wkt = dataset.coords[gm].attrs.get("crs_wkt") or \
+                              dataset.coords[gm].attrs.get("spatial_ref")
+                    if crs_wkt:
+                        try:
+                            crs = CRS.from_wkt(crs_wkt)
+                            break
+                        except Exception:
+                            pass
+
+        # Try spatial_ref coordinate directly
+        if crs is None and "spatial_ref" in dataset.coords:
+            crs_wkt = dataset.coords["spatial_ref"].attrs.get("crs_wkt") or \
+                      dataset.coords["spatial_ref"].attrs.get("spatial_ref")
+            if crs_wkt:
+                try:
+                    crs = CRS.from_wkt(crs_wkt)
+                except Exception:
+                    pass
+
+        # Try crs_wkt in dataset attributes
+        if crs is None:
+            crs_wkt = dataset.attrs.get("crs_wkt") or dataset.attrs.get("crs")
+            if crs_wkt:
+                try:
+                    crs = CRS.from_wkt(crs_wkt)
+                except Exception:
+                    pass
+
+        # Last resort: assume EPSG:4326 if bounds look like degrees
+        if crs is None:
+            proj_bbox_check = dataset.rio.bounds()
+            if (proj_bbox_check[0] >= -180 and proj_bbox_check[2] <= 180 and
+                    proj_bbox_check[1] >= -90 and proj_bbox_check[3] <= 90):
+                crs = CRS.from_epsg(4326)
+            else:
+                # Bounds in meters — assume EPSG:3035 (LAEA Europe) as fallback for EURAC data
+                crs = CRS.from_epsg(3035)
+
         proj_bbox = dataset.rio.bounds()
         proj_transform = list(dataset.rio.transform())[0:6]
         proj_shape = dataset.rio.shape
@@ -93,12 +138,12 @@ class StacGrid:
             return self._cells
         self._cells = self.derive_cells()
         return self._cells
-    
+
     @classmethod
     def derive_points(cls, bbox: Polygon):
         """ """
         minx, miny, maxx, maxy = bbox.bounds
-        
+
         lower_left = (minx, miny)
         lower_right = (maxx, miny)
         upper_left = (minx, maxy)
@@ -109,14 +154,14 @@ class StacGrid:
             upper_left=upper_left,
             upper_right=upper_right
         )
-    
+
     @staticmethod
     def derive_distance(crs, point1, point2):
         """ Returning distance in metres divided by the resolution in metres. """
         geod = Geod(a=crs.ellipsoid.semi_major_metre, rf=crs.ellipsoid.inverse_flattening)
         az12, az21, distance = geod.inv(point1[0], point1[1], point2[0], point2[1])
         return  distance
-    
+
 
     @classmethod
     def find_cell_bounds(cls, crs, cell, starting_position):
@@ -124,7 +169,7 @@ class StacGrid:
         lon, lat = starting_position
 
         geod = Geod(a=crs.ellipsoid.semi_major_metre, rf=crs.ellipsoid.inverse_flattening)
-        
+
         y_range, x_range = cell
 
         yN, yM = y_range
@@ -144,7 +189,7 @@ class StacGrid:
         lat_distance = self.derive_distance(self.crs, self.edges.upper_left, self.edges.lower_left)
 
         cells = [
-        
+
         ]
         n_lon_tiles = int(np.ceil(lon_distance / self.tilesize))
         n_lat_tiles = int(np.ceil(lat_distance / self.tilesize))
@@ -156,7 +201,7 @@ class StacGrid:
                 long_cell_pos = (long_cell * self.tilesize, lon_distance)
             else:
                 long_cell_pos = (long_cell * self.tilesize, ((long_cell + 1) * self.tilesize) - 1)
-            
+
             for lat_cell in range(n_lat_tiles):
 
                 if ((lat_cell + 1) * self.tilesize) > lat_distance:

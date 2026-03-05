@@ -1,0 +1,18 @@
+FROM ghcr.io/eodcgmbh/openeo-argoworkflows:executor-2025.5.1
+
+USER root
+RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/* && \
+    chown -R 1000:1000 /opt/openeo_argoworkflows_executor
+
+# Fix: use user-specified bands instead of hardcoded asset name list in load_collection
+# Fix: CRS detection and writing for NetCDF CF convention compliance
+COPY openeo_argoworkflows/executor/openeo_argoworkflows_executor/extra_processes/process_implementations/io.py \
+     /opt/openeo_argoworkflows_executor/extra_processes/process_implementations/io.py
+
+# Fix: handle None CRS from NetCDF output in STAC item creation
+COPY openeo_argoworkflows/executor/openeo_argoworkflows_executor/stac.py \
+     /opt/openeo_argoworkflows_executor/stac.py
+
+USER 1000
+
+ENV DASK_GATEWAY_SERVER="http://traefik-openeo-dask-gateway.openeo.svc.cluster.local:80"
