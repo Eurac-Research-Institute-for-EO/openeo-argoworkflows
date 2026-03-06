@@ -146,6 +146,11 @@ def execute(process_graph, user_profile, dask_profile):
                         ds = ds.rio.write_crs(crs_wkt)
                 datasets.append(ds)
 
+            # raster2stac calls item.validate() which fetches remote JSON schemas from
+            # proj.org — blocked in the executor pod (403). Disable pystac validation.
+            import pystac
+            pystac.Item.validate = lambda self: []
+
             # raster2stac expects a double-nested list when passing xarray Datasets:
             # outer list = collection items, inner list = files for the same timestamp.
             Raster2STAC(

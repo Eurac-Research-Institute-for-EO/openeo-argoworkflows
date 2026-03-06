@@ -77,7 +77,7 @@ class UserWorkspace(BaseModel):
     @property
     def results_collection_json(self):
         if self.job_id:
-            return self.stac_directory / f"{self.job_id}_collection.json"
+            return self.stac_directory / f"{self.job_id}.json"
 
 
 class ArgoJobsRegister(JobsRegister):
