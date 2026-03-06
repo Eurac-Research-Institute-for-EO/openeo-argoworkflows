@@ -13,7 +13,7 @@ global:
     oidcPolicies: ""
     stacCatalogueUrl: "https://stac.eurac.edu"
     workspaceRoot: "/user_workspaces"
-    executorImage: "localhost:32000/openeo-executor-fixed:v31"
+    executorImage: "ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:latest"
     daskWorkerCores: "1"
     daskWorkerMemory: "4"
     daskWorkerLimit: "2"
@@ -24,7 +24,7 @@ replicaCount: 1
 image:
   repository: yuvraj1989/openeo-argoworkflows-api
   pullPolicy: IfNotPresent
-  tag: "eurac-custom-oidc-v3"
+  tag: "eurac-custom-oidc-v4"
 
 postgresql:
   enabled: true
