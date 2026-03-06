@@ -17,7 +17,8 @@ from fastapi import Depends, Response, HTTPException, responses
 from typing import Optional
 from pathlib import Path
 from pydantic import conint, BaseModel
-from pystac import Collection, Link as StacLink
+from glob import glob as globfiles
+from pystac import Asset, Collection, Link as StacLink
 from redis import Redis
 from rq import Queue
 from sqlalchemy.exc import IntegrityError
@@ -342,21 +343,59 @@ class ArgoJobsRegister(JobsRegister):
 
         stac_collection.links = new_links
 
-        for value in stac_collection.assets.values():
-            file_name = value.href.split("/")[-1]
-            relative_path = "/{job_id}/RESULTS/{file}".format(
-                user_id=user, job_id=job_id, file=file_name
-            )
-            path ="{prefix}/files{path}".format(prefix=self.settings.OPENEO_PREFIX, path=relative_path)
-
-            value.href = API_SELF_URL.__add__(
-                ExtendedAuthenticator.sign_url(
-                    url=path,
-                    key_name="OPENEO_SIGN_KEY",
-                    user_id=user.user_id,
-                    expiration_time=expiry
+        # If collection has assets (old executor format), sign them directly
+        if stac_collection.assets:
+            for value in stac_collection.assets.values():
+                file_name = value.href.split("/")[-1]
+                relative_path = "/{job_id}/RESULTS/{file}".format(
+                    user_id=user, job_id=job_id, file=file_name
                 )
-            )
+                path ="{prefix}/files{path}".format(prefix=self.settings.OPENEO_PREFIX, path=relative_path)
+
+                value.href = API_SELF_URL.__add__(
+                    ExtendedAuthenticator.sign_url(
+                        url=path,
+                        key_name="OPENEO_SIGN_KEY",
+                        user_id=user.user_id,
+                        expiration_time=expiry
+                    )
+                )
+        else:
+            # New raster2stac executor: assets are on STAC items, not the collection.
+            # Read items from items/ directory and add their assets to the collection.
+            items_dir = wspace.stac_directory / "items"
+            item_files = sorted(globfiles(str(items_dir / "*.json"))) if items_dir.exists() else []
+
+            for item_file in item_files:
+                with open(item_file) as f:
+                    item_dict = json.load(f)
+                for asset_key, asset_val in item_dict.get("assets", {}).items():
+                    href = asset_val.get("href", "")
+                    # href is an absolute path like /user_workspaces/{user_id}/{job_id}/STAC/{datetime}/{file}.nc
+                    # We need the part relative to the user workspace: {job_id}/STAC/{datetime}/{file}.nc
+                    user_ws_prefix = str(wspace.user_directory) + "/"
+                    if href.startswith(user_ws_prefix):
+                        relative_file_path = href[len(user_ws_prefix):]
+                    else:
+                        relative_file_path = href.split("/")[-1]
+
+                    path = "{prefix}/files/{rel_path}".format(
+                        prefix=self.settings.OPENEO_PREFIX, rel_path=relative_file_path
+                    )
+
+                    signed_href = API_SELF_URL.__add__(
+                        ExtendedAuthenticator.sign_url(
+                            url=path,
+                            key_name="OPENEO_SIGN_KEY",
+                            user_id=user.user_id,
+                            expiration_time=expiry
+                        )
+                    )
+
+                    # Use item_id + asset_key as the collection-level asset key
+                    collection_asset_key = f"{item_dict['id']}_{asset_key}"
+                    asset_val["href"] = signed_href
+                    stac_collection.add_asset(collection_asset_key, Asset.from_dict(asset_val))
 
         stac_collection.summaries.add(
             "datetime", {
