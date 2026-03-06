@@ -367,7 +367,7 @@ class ArgoJobsRegister(JobsRegister):
 
         stac_collection.extra_fields.update({"openeo:status": "finished"})
 
-        return stac_collection.to_dict()
+        return stac_collection.to_dict(transform_hrefs=False)
     
 
     def process_sync_job(self, body: JobsRequest = JobsRequest(), user: User = Depends(Authenticator.validate)):
