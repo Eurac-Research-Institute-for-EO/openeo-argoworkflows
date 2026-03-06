@@ -24,7 +24,7 @@ replicaCount: 1
 image:
   repository: yuvraj1989/openeo-argoworkflows-api
   pullPolicy: IfNotPresent
-  tag: "eurac-custom-oidc-v4"
+  tag: "eurac-custom-oidc-v5"
 
 postgresql:
   enabled: true
