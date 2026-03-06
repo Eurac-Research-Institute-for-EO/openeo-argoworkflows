@@ -8,6 +8,7 @@ on:
       - 'Dockerfile.executor'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/extra_processes/process_implementations/io.py'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/stac.py'
+      - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/cli.py'
   workflow_dispatch:
 
 env:
