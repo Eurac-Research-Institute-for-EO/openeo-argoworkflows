@@ -21,6 +21,11 @@ ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
 RUN poetry install --only main
 
+# Patch openeo-fastapi library: replace hardcoded EGI Check-in with env-based OIDC config,
+# and disable JWT audience validation for EURAC Keycloak compatibility.
+COPY ./patches/openeo_fastapi_core.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/core.py
+COPY ./patches/openeo_fastapi_auth.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/auth.py
+
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows_api /opt/openeo_argoworkflows_api
 
 RUN addgroup --gid ${GROUP_ID} ${USERNAME}
