@@ -8,6 +8,7 @@ on:
       - 'Dockerfile.executor'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/**'
       - 'openeo_argoworkflows/executor/pyproject.toml'
+      - 'openeo_argoworkflows/executor/poetry.lock'
   workflow_dispatch:
 
 env:
