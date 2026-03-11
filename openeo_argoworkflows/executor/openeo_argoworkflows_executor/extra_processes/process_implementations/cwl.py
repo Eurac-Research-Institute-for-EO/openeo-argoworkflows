@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -99,6 +100,36 @@ def _collect_calrissian_outputs(calrissian_outdir: Path, results_path: Path) -> 
     return collected
 
 
+def _patch_calrissian_container_lookup():
+    """Patch Calrissian to use the 'main' container for PVC volume inspection.
+
+    Calrissian's KubernetesPodVolumeInspector.get_first_container() returns
+    pod.spec.containers[0], which in Argo Workflow pods is the 'wait'
+    sidecar — not the executor. The sidecar mounts the workspace PVC at
+    /mainctrfs/user_workspaces while the 'main' container mounts at
+    /user_workspaces. This patch makes Calrissian find the 'main' container
+    so PVC paths resolve correctly.
+
+    Must be called in-process BEFORE calrissian.main.main().
+    Does NOT work with subprocess invocation (separate Python interpreter).
+    """
+    try:
+        from calrissian.job import KubernetesPodVolumeInspector
+
+        _orig = KubernetesPodVolumeInspector.get_first_container
+
+        def _get_main_container(self):
+            for c in self.pod.spec.containers:
+                if c.name == "main":
+                    return c
+            return _orig(self)
+
+        KubernetesPodVolumeInspector.get_first_container = _get_main_container
+        logger.info("Patched Calrissian to use 'main' container for PVC resolution")
+    except Exception as e:
+        logger.warning(f"Could not patch Calrissian container lookup: {e}")
+
+
 def run_cwl(
     cwl: str,
     inputs: dict,
@@ -109,7 +140,12 @@ def run_cwl(
 
     This executor-side implementation overrides the processes-dask stub.
     It resolves the CWL document, validates it, then invokes Calrissian
-    as a subprocess to run the workflow on the cluster.
+    in-process to run the workflow on the cluster.
+
+    Calrissian is called in-process (not as a subprocess) so that the
+    monkey-patch to KubernetesPodVolumeInspector takes effect. This is
+    necessary because Argo Workflow pods have a 'wait' sidecar as
+    containers[0], which Calrissian would otherwise inspect for PVC mounts.
     """
     if options is None:
         options = {}
@@ -121,18 +157,10 @@ def run_cwl(
     results_path = os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results")
     os.makedirs(results_path, exist_ok=True)
 
-    # Calrissian requires working directories to be on a PVC. It inspects
-    # containers[0]'s volume mounts in the K8s pod spec. In Argo Workflow
-    # pods, containers[0] is the 'wait' sidecar which mounts the PVC at
-    # /mainctrfs/user_workspaces, while 'main' mounts at /user_workspaces.
-    # The Dockerfile creates a symlink /mainctrfs/user_workspaces →
-    # /user_workspaces so paths resolve correctly. We rewrite the workspace
-    # path to use the /mainctrfs prefix that Calrissian expects.
+    # Calrissian requires working directories to be on a PVC (not emptyDir).
+    # Use the workspace PVC path for CWL working dirs.
     workspace_root = os.environ.get("OPENEO_USER_WORKSPACE", results_path)
-    calrissian_workspace = workspace_root.replace(
-        "/user_workspaces", "/mainctrfs/user_workspaces", 1
-    )
-    cwl_work_base = Path(calrissian_workspace) / "_cwl_work"
+    cwl_work_base = Path(workspace_root) / "_cwl_work"
     cwl_work_base.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(
@@ -174,8 +202,15 @@ def run_cwl(
             os.environ["CALRISSIAN_POD_NAME"] = socket.gethostname()
             logger.info(f"Set CALRISSIAN_POD_NAME={os.environ['CALRISSIAN_POD_NAME']}")
 
-        # Build Calrissian command
-        cmd = [
+        # Patch Calrissian to look at the 'main' container (not the Argo
+        # 'wait' sidecar at containers[0]) for PVC volume mounts.
+        # This works because we call Calrissian in-process below.
+        _patch_calrissian_container_lookup()
+
+        # Build Calrissian CLI args. We call calrissian.main.main()
+        # in-process (not subprocess) so the monkey-patch above takes
+        # effect. Calrissian uses argparse on sys.argv.
+        calrissian_args = [
             "calrissian",
             "--max-ram",
             str(max_ram),
@@ -193,35 +228,31 @@ def run_cwl(
             str(inputs_path),
         ]
 
-        logger.info(f"Running Calrissian: {' '.join(cmd)}")
+        logger.info(f"Running Calrissian in-process: {' '.join(calrissian_args)}")
 
+        # Save and replace sys.argv for Calrissian's argparse
+        orig_argv = sys.argv
+        return_code = 1
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600,  # 1 hour timeout for MVP
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(
-                "CWL execution timed out after 3600 seconds. "
-                "Consider splitting the workflow or increasing timeout."
-            )
+            sys.argv = calrissian_args
+            from calrissian.main import main as calrissian_main
 
-        # Log Calrissian output
-        if result.stdout:
-            logger.info(f"Calrissian stdout:\n{result.stdout}")
-        if result.stderr:
-            logger.warning(f"Calrissian stderr:\n{result.stderr}")
+            return_code = calrissian_main() or 0
+        except SystemExit as e:
+            # Calrissian/argparse may call sys.exit()
+            return_code = e.code if isinstance(e.code, int) else (1 if e.code else 0)
+        except Exception as e:
+            raise RuntimeError(f"Calrissian execution error: {e}")
+        finally:
+            sys.argv = orig_argv
 
-        if result.returncode != 0:
-            error_detail = result.stderr or result.stdout or "Unknown error"
-            # Read stderr log if available
+        if return_code != 0:
+            error_detail = "Unknown error"
             stderr_log = work_dir / "cwl-stderr.log"
             if stderr_log.exists():
                 error_detail = stderr_log.read_text()
             raise RuntimeError(
-                f"CWL execution failed (exit code {result.returncode}): {error_detail}"
+                f"CWL execution failed (exit code {return_code}): {error_detail}"
             )
 
         # Read Calrissian output manifest
