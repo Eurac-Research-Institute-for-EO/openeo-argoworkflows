@@ -167,6 +167,27 @@ def run_cwl(
             os.environ["CALRISSIAN_POD_NAME"] = socket.gethostname()
             logger.info(f"Set CALRISSIAN_POD_NAME={os.environ['CALRISSIAN_POD_NAME']}")
 
+        # Calrissian's KubernetesPodVolumeInspector.get_first_container()
+        # returns containers[0], which in Argo Workflow pods is the 'wait'
+        # sidecar — not the 'main' executor container. Patch it to find
+        # the container named 'main' so PVC mount paths are resolved
+        # correctly.
+        try:
+            from calrissian.job import KubernetesPodVolumeInspector
+
+            _orig = KubernetesPodVolumeInspector.get_first_container
+
+            def _get_main_container(self):
+                for c in self.pod.spec.containers:
+                    if c.name == "main":
+                        return c
+                return _orig(self)
+
+            KubernetesPodVolumeInspector.get_first_container = _get_main_container
+            logger.info("Patched Calrissian to use 'main' container for PVC resolution")
+        except Exception as e:
+            logger.warning(f"Could not patch Calrissian PVC inspector: {e}")
+
         # Build Calrissian command
         cmd = [
             "calrissian",
