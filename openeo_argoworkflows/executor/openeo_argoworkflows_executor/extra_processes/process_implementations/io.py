@@ -1,19 +1,17 @@
 import logging
-import numpy as np
 import os
+from pathlib import Path
+from typing import Optional, Union
+
+import numpy as np
 import pyproj
 import pystac_client
 import xarray as xr
-
 from odc.stac import stac_load
-from pathlib import Path
-from pystac.extensions import raster
-from typing import Optional, Union
-from openeo_processes_dask.process_implementations.data_model import (
-    RasterCube
-)
-from openeo_processes_dask.process_implementations.cubes._filter import filter_bbox
 from openeo_pg_parser_networkx.pg_schema import BoundingBox, GeoJson, TemporalInterval
+from openeo_processes_dask.process_implementations.cubes._filter import filter_bbox
+from openeo_processes_dask.process_implementations.data_model import RasterCube
+from pystac.extensions import raster
 
 __all__ = ["load_collection", "save_result"]
 
@@ -56,14 +54,23 @@ def load_collection(
     else:
         raise ValueError("Provided spatial extent could not be interpreted.")
 
-    # Format datetime properly for STAC API (needs ISO format with time)
+    # Format datetime properly for STAC API (needs RFC 3339 / ISO 8601)
     datetime_parts = []
     for time in temporal_extent:
-        if time != 'None' and time is not None:
-            time_str = str(time.root) if hasattr(time, 'root') else str(time)
-            # Add time component if not present
-            if 'T' not in time_str:
-                time_str = f"{time_str}T00:00:00Z"
+        if time != "None" and time is not None:
+            val = time.root if hasattr(time, "root") else time
+            from datetime import datetime as dt
+
+            if isinstance(val, dt):
+                time_str = val.strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                time_str = str(val).strip()
+                # Convert Python datetime string format to ISO 8601
+                if " " in time_str and "T" not in time_str:
+                    # "2020-01-01 00:00:00+00:00" → take date part only
+                    time_str = time_str.split(" ")[0] + "T00:00:00Z"
+                elif "T" not in time_str:
+                    time_str = f"{time_str}T00:00:00Z"
             datetime_parts.append(time_str)
 
     query_dict["datetime"] = "/".join(datetime_parts) if datetime_parts else None
@@ -81,8 +88,8 @@ def load_collection(
     result_items = list(results.items())
 
     if not result_items:
-        bbox = query_dict.get('bbox', 'N/A')
-        datetime_range = query_dict.get('datetime', 'N/A')
+        bbox = query_dict.get("bbox", "N/A")
+        datetime_range = query_dict.get("datetime", "N/A")
         error_msg = (
             f"No data found for collection '{id}' with the given parameters:\n"
             f"  - Bounding box: {bbox}\n"
@@ -117,29 +124,31 @@ def load_collection(
     # Try to extract raster metadata from item
     if raster.RasterExtension.has_extension(example_item):
         for asset in example_item.get_assets().values():
-            if 'raster:bands' in asset.extra_fields.keys():
-                for band in asset.extra_fields['raster:bands']:
-                    if 'spatial_resolution' in band and resolution is None:
-                        resolution = band['spatial_resolution']
-                    if 'nodata' in band and nodata is None:
-                        nodata = band['nodata']
-                    if 'data_type' in band and dtype is None:
-                        dtype = band['data_type']
+            if "raster:bands" in asset.extra_fields.keys():
+                for band in asset.extra_fields["raster:bands"]:
+                    if "spatial_resolution" in band and resolution is None:
+                        resolution = band["spatial_resolution"]
+                    if "nodata" in band and nodata is None:
+                        nodata = band["nodata"]
+                    if "data_type" in band and dtype is None:
+                        dtype = band["data_type"]
             if resolution and nodata and dtype:
                 break
 
     # If resolution not found, determine from CRS
     if resolution is None:
-        crs_measurement = crs.axis_info[0].unit_name if crs.axis_info else 'metre'
+        crs_measurement = crs.axis_info[0].unit_name if crs.axis_info else "metre"
 
-        if crs_measurement == 'metre':
+        if crs_measurement == "metre":
             resolution = 10  # Default 10m for metric CRS
-        elif crs_measurement == 'degree':
+        elif crs_measurement == "degree":
             resolution = 0.0001  # ~10m at equator
         else:
             resolution = 10  # Default fallback
 
-        logger.info(f"Resolution not found in metadata, using default: {resolution} ({crs_measurement})")
+        logger.info(
+            f"Resolution not found in metadata, using default: {resolution} ({crs_measurement})"
+        )
     else:
         logger.info(f"Using resolution from metadata: {resolution}")
 
@@ -167,25 +176,54 @@ def load_collection(
             logger.info(f"Loading user-specified bands: {bands}")
         else:
             # Select only data-related assets
-            data_assets = [a for a in available_assets if a in ['data', 'visual', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B8A', 'B09', 'B10', 'B11', 'B12']]
+            data_assets = [
+                a
+                for a in available_assets
+                if a
+                in [
+                    "data",
+                    "visual",
+                    "B01",
+                    "B02",
+                    "B03",
+                    "B04",
+                    "B05",
+                    "B06",
+                    "B07",
+                    "B08",
+                    "B8A",
+                    "B09",
+                    "B10",
+                    "B11",
+                    "B12",
+                ]
+            ]
             if not data_assets:
                 # Fallback: exclude known non-data assets
-                data_assets = [a for a in available_assets if a not in ['thumbnail', 'tilejson', 'preview', 'metadata']]
+                data_assets = [
+                    a
+                    for a in available_assets
+                    if a not in ["thumbnail", "tilejson", "preview", "metadata"]
+                ]
             if data_assets:
                 load_kwargs["bands"] = data_assets
                 logger.info(f"Loading auto-detected bands/assets: {data_assets}")
 
-    logger.info(f"Loading data with CRS={crs}, resolution={resolution}, kwargs={load_kwargs}")
+    logger.info(
+        f"Loading data with CRS={crs}, resolution={resolution}, kwargs={load_kwargs}"
+    )
 
     lazy_xarray = stac_load(
         result_items,
         crs=crs,
         resolution=resolution,
         chunks={"x": 2048, "y": 2048},
-        **load_kwargs
-    ).to_array(dim='bands')
+        **load_kwargs,
+    ).to_array(dim="bands")
 
-    logger.info(f"Loaded xarray with shape: {lazy_xarray.shape}, dims: {lazy_xarray.dims}")
+    logger.info(
+        f"Loaded xarray with shape: {lazy_xarray.shape}, dims: {lazy_xarray.dims}"
+    )
 
     # Clip to the original bounding box
     return filter_bbox(lazy_xarray, extent=spatial_extent)
@@ -193,7 +231,7 @@ def load_collection(
 
 def save_result(
     data: RasterCube,
-    format: str = 'netcdf',
+    format: str = "netcdf",
     options: Optional[dict] = None,
 ):
     """Save the result data cube to a file."""
@@ -208,7 +246,7 @@ def save_result(
             used_dims.update(ds[var].dims)
 
         # Always keep CF grid_mapping coordinates so QGIS/GDAL can read the CRS
-        keep = {'spatial_ref', 'crs_wkt'}
+        keep = {"spatial_ref", "crs_wkt"}
 
         for coord in list(ds.coords):
             if coord not in used_dims and coord not in keep:
@@ -217,7 +255,9 @@ def save_result(
 
     import uuid
 
-    logger.info(f"Saving result data with shape: {data.shape if hasattr(data, 'shape') else 'unknown'}")
+    logger.info(
+        f"Saving result data with shape: {data.shape if hasattr(data, 'shape') else 'unknown'}"
+    )
     logger.info(f"Data attrs: {data.attrs}")
 
     _id = str(uuid.uuid4())
@@ -235,25 +275,27 @@ def save_result(
     from pyproj import CRS as PyprojCRS
 
     crs = None
-    if hasattr(data, 'rio') and data.rio.crs is not None:
+    if hasattr(data, "rio") and data.rio.crs is not None:
         crs = data.rio.crs
         logger.info(f"Got CRS from rio accessor: {crs}")
     else:
         # rioxarray couldn't detect CRS - check coordinate attrs (stackstac stores it there)
-        for coord_name in ['x', 'y']:
+        for coord_name in ["x", "y"]:
             if coord_name in data.coords:
-                crs_str = data.coords[coord_name].attrs.get('crs')
+                crs_str = data.coords[coord_name].attrs.get("crs")
                 if crs_str:
                     try:
                         crs = PyprojCRS.from_user_input(crs_str)
-                        logger.info(f"Got CRS from coord '{coord_name}' attr: {crs_str}")
+                        logger.info(
+                            f"Got CRS from coord '{coord_name}' attr: {crs_str}"
+                        )
                         break
                     except Exception as e:
                         logger.warning(f"Could not parse CRS from coord attr: {e}")
 
-    if crs is None and 'crs' in data.attrs:
+    if crs is None and "crs" in data.attrs:
         try:
-            crs = PyprojCRS.from_user_input(data.attrs['crs'])
+            crs = PyprojCRS.from_user_input(data.attrs["crs"])
             logger.info(f"Got CRS from data attrs: {data.attrs['crs']}")
         except Exception as e:
             logger.warning(f"Could not parse CRS from data attrs: {e}")
@@ -286,6 +328,7 @@ def save_result(
     # Write CRS after cleaning so spatial_ref is not stripped
     if crs is not None:
         from pyproj import CRS as PyprojCRS
+
         crs_obj = crs if isinstance(crs, PyprojCRS) else PyprojCRS.from_user_input(crs)
         crs_wkt = crs_obj.to_wkt()
         epsg = crs_obj.to_epsg()
@@ -309,17 +352,19 @@ def save_result(
         if epsg:
             spatial_ref_attrs["EPSG"] = epsg
 
-        logger.info(f"CRS prepared (CF: {cf_grid_mapping_name}, EPSG: {epsg}) — will write via netCDF4")
+        logger.info(
+            f"CRS prepared (CF: {cf_grid_mapping_name}, EPSG: {epsg}) — will write via netCDF4"
+        )
 
     # Add standard_name to x/y so GDAL recognises them as projected axes
     # even before reading spatial_ref
     if crs is not None:
-        if 'x' in out_data.coords:
-            out_data['x'].attrs['standard_name'] = 'projection_x_coordinate'
-            out_data['x'].attrs['long_name'] = 'x coordinate of projection'
-        if 'y' in out_data.coords:
-            out_data['y'].attrs['standard_name'] = 'projection_y_coordinate'
-            out_data['y'].attrs['long_name'] = 'y coordinate of projection'
+        if "x" in out_data.coords:
+            out_data["x"].attrs["standard_name"] = "projection_x_coordinate"
+            out_data["x"].attrs["long_name"] = "x coordinate of projection"
+        if "y" in out_data.coords:
+            out_data["y"].attrs["standard_name"] = "projection_y_coordinate"
+            out_data["y"].attrs["long_name"] = "y coordinate of projection"
 
     logger.info(f"Writing netCDF to: {destination}")
     out_data.to_netcdf(path=destination, encoding=encoding)
@@ -328,13 +373,14 @@ def save_result(
     # data variables with a dimension, but GDAL needs a true dimensionless variable
     if crs is not None:
         import netCDF4
-        with netCDF4.Dataset(destination, 'a') as nc:
+
+        with netCDF4.Dataset(destination, "a") as nc:
             # Remove xarray's broken spatial_ref if present, recreate properly
-            if 'spatial_ref' in nc.variables:
+            if "spatial_ref" in nc.variables:
                 # netCDF4 can't delete variables, so just clear and rewrite attrs
-                sr = nc.variables['spatial_ref']
+                sr = nc.variables["spatial_ref"]
             else:
-                sr = nc.createVariable('spatial_ref', 'i4')
+                sr = nc.createVariable("spatial_ref", "i4")
             sr.assignValue(0)
             for k, v in spatial_ref_attrs.items():
                 try:
@@ -343,8 +389,8 @@ def save_result(
                     pass
             # Ensure grid_mapping points to spatial_ref on all data variables
             for varname in nc.variables:
-                if varname not in ('x', 'y', 'time', 'spatial_ref'):
-                    nc.variables[varname].grid_mapping = 'spatial_ref'
+                if varname not in ("x", "y", "time", "spatial_ref"):
+                    nc.variables[varname].grid_mapping = "spatial_ref"
         logger.info("Wrote spatial_ref as dimensionless CF grid_mapping variable")
 
     logger.info(f"Successfully saved result to: {destination}")

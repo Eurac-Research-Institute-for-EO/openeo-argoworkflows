@@ -151,6 +151,13 @@ def run_cwl(
         calrissian_tmpdir = work_dir / "tmp"
         calrissian_tmpdir.mkdir(exist_ok=True)
 
+        # Calrissian requires CALRISSIAN_POD_NAME to identify itself in K8s
+        if "CALRISSIAN_POD_NAME" not in os.environ:
+            import socket
+
+            os.environ["CALRISSIAN_POD_NAME"] = socket.gethostname()
+            logger.info(f"Set CALRISSIAN_POD_NAME={os.environ['CALRISSIAN_POD_NAME']}")
+
         # Build Calrissian command
         cmd = [
             "calrissian",
