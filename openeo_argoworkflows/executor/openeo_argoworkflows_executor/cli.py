@@ -38,7 +38,7 @@ def execute(process_graph, user_profile, dask_profile):
     import openeo_processes_dask
     from openeo_pg_parser_networkx.graph import OpenEOProcessGraph
 
-    from openeo_argoworkflows_executor.executor import execute
+    from openeo_argoworkflows_executor.executor import execute, _is_cwl_job
     from openeo_argoworkflows_executor.models import ExecutorParameters
     from openeo_argoworkflows_executor.stac import create_stac_item
 
@@ -65,12 +65,16 @@ def execute(process_graph, user_profile, dask_profile):
     os.environ["OPENEO_STAC_PATH"] = str(openeo_parameters.user_profile.stac_path)
     os.environ["OPENEO_RESULTS_PATH"] = str(openeo_parameters.user_profile.results_path)
 
-    if openeo_parameters.dask_profile.LOCAL:
+    is_cwl = _is_cwl_job(openeo_parameters.process_graph)
+
+    # CWL jobs don't need a Dask cluster — skip cluster setup entirely
+    dask_cluster = None
+    if is_cwl:
+        logger.info("CWL job detected — skipping Dask cluster setup")
+    elif openeo_parameters.dask_profile.LOCAL:
         from dask.distributed import worker_client
 
-        dask_cluster = None
         client = worker_client()
-        pass
     else:
         gateway = Gateway(openeo_parameters.dask_profile.GATEWAY_URL)
         options = gateway.cluster_options()
@@ -116,9 +120,11 @@ def execute(process_graph, user_profile, dask_profile):
     stac_path = str(openeo_parameters.user_profile.stac_path)
     stac_api_url = os.environ.get("OPENEO_RESULTS_STAC_URL", "https://stac.openeo.eurac.edu/")
 
-    # Collect all NetCDF result files
+    # Collect all result files
     fs = fsspec.filesystem(protocol="file")
-    result_files = [f["name"] for f in fs.listdir(results_path) if f["name"].endswith(".nc")]
+    all_result_files = [f["name"] for f in fs.listdir(results_path) if not f["name"].startswith(".")]
+    result_files = [f for f in all_result_files if f.endswith(".nc")]
+    other_files = [f for f in all_result_files if not f.endswith(".nc")]
 
     if result_files:
         try:
@@ -184,6 +190,21 @@ def execute(process_graph, user_profile, dask_profile):
 
         except Exception as e:
             logger.warning(f"STAC publishing failed for job {job_id}, results are still available: {e}")
+
+    # Handle non-NetCDF output files (e.g. from CWL workflows)
+    # Create minimal STAC collection and items so they appear in job results
+    if other_files and not result_files:
+        try:
+            from openeo_argoworkflows_executor.stac_cwl import create_cwl_stac
+
+            create_cwl_stac(
+                job_id=job_id,
+                result_files=other_files,
+                stac_path=stac_path,
+                stac_api_url=stac_api_url,
+            )
+        except Exception as e:
+            logger.warning(f"CWL STAC publishing failed for job {job_id}, results are still available: {e}")
 
 
 cli.add_command(execute)
