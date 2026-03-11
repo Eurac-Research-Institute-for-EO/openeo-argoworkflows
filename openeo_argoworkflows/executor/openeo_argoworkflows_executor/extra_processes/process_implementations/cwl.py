@@ -121,11 +121,34 @@ def run_cwl(
     results_path = os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results")
     os.makedirs(results_path, exist_ok=True)
 
-    # Calrissian requires working directories to be on a PVC (not emptyDir).
-    # Use the workspace PVC path for CWL working dirs so Calrissian can
-    # share files between the orchestrator and CWL step pods.
+    # Calrissian requires working directories to be on a PVC. It inspects
+    # the K8s pod spec to verify this — specifically containers[0]'s mounts.
+    # In Argo Workflow pods, containers[0] is the 'wait' sidecar which
+    # mounts the PVC at /mainctrfs/user_workspaces, while the 'main'
+    # executor container mounts it at /user_workspaces. We create a symlink
+    # so paths starting with /mainctrfs/user_workspaces resolve correctly
+    # in our container, and pass those paths to Calrissian.
     workspace_root = os.environ.get("OPENEO_USER_WORKSPACE", results_path)
-    cwl_work_base = Path(workspace_root) / "_cwl_work"
+    mainctrfs_prefix = Path("/mainctrfs")
+    if not mainctrfs_prefix.exists():
+        try:
+            mainctrfs_prefix.mkdir(parents=True, exist_ok=True)
+            # Symlink /mainctrfs/user_workspaces → /user_workspaces
+            mainctrfs_ws = mainctrfs_prefix / "user_workspaces"
+            if not mainctrfs_ws.exists():
+                mainctrfs_ws.symlink_to("/user_workspaces")
+                logger.info(
+                    "Created symlink /mainctrfs/user_workspaces → /user_workspaces"
+                )
+        except OSError as e:
+            logger.warning(f"Could not create /mainctrfs symlink: {e}")
+
+    # Rewrite workspace path to use the /mainctrfs prefix that matches
+    # what Calrissian sees in containers[0]'s volume mounts
+    calrissian_workspace = workspace_root.replace(
+        "/user_workspaces", "/mainctrfs/user_workspaces", 1
+    )
+    cwl_work_base = Path(calrissian_workspace) / "_cwl_work"
     cwl_work_base.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(
@@ -166,27 +189,6 @@ def run_cwl(
 
             os.environ["CALRISSIAN_POD_NAME"] = socket.gethostname()
             logger.info(f"Set CALRISSIAN_POD_NAME={os.environ['CALRISSIAN_POD_NAME']}")
-
-        # Calrissian's KubernetesPodVolumeInspector.get_first_container()
-        # returns containers[0], which in Argo Workflow pods is the 'wait'
-        # sidecar — not the 'main' executor container. Patch it to find
-        # the container named 'main' so PVC mount paths are resolved
-        # correctly.
-        try:
-            from calrissian.job import KubernetesPodVolumeInspector
-
-            _orig = KubernetesPodVolumeInspector.get_first_container
-
-            def _get_main_container(self):
-                for c in self.pod.spec.containers:
-                    if c.name == "main":
-                        return c
-                return _orig(self)
-
-            KubernetesPodVolumeInspector.get_first_container = _get_main_container
-            logger.info("Patched Calrissian to use 'main' container for PVC resolution")
-        except Exception as e:
-            logger.warning(f"Could not patch Calrissian PVC inspector: {e}")
 
         # Build Calrissian command
         cmd = [
