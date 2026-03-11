@@ -122,29 +122,13 @@ def run_cwl(
     os.makedirs(results_path, exist_ok=True)
 
     # Calrissian requires working directories to be on a PVC. It inspects
-    # the K8s pod spec to verify this — specifically containers[0]'s mounts.
-    # In Argo Workflow pods, containers[0] is the 'wait' sidecar which
-    # mounts the PVC at /mainctrfs/user_workspaces, while the 'main'
-    # executor container mounts it at /user_workspaces. We create a symlink
-    # so paths starting with /mainctrfs/user_workspaces resolve correctly
-    # in our container, and pass those paths to Calrissian.
+    # containers[0]'s volume mounts in the K8s pod spec. In Argo Workflow
+    # pods, containers[0] is the 'wait' sidecar which mounts the PVC at
+    # /mainctrfs/user_workspaces, while 'main' mounts at /user_workspaces.
+    # The Dockerfile creates a symlink /mainctrfs/user_workspaces →
+    # /user_workspaces so paths resolve correctly. We rewrite the workspace
+    # path to use the /mainctrfs prefix that Calrissian expects.
     workspace_root = os.environ.get("OPENEO_USER_WORKSPACE", results_path)
-    mainctrfs_prefix = Path("/mainctrfs")
-    if not mainctrfs_prefix.exists():
-        try:
-            mainctrfs_prefix.mkdir(parents=True, exist_ok=True)
-            # Symlink /mainctrfs/user_workspaces → /user_workspaces
-            mainctrfs_ws = mainctrfs_prefix / "user_workspaces"
-            if not mainctrfs_ws.exists():
-                mainctrfs_ws.symlink_to("/user_workspaces")
-                logger.info(
-                    "Created symlink /mainctrfs/user_workspaces → /user_workspaces"
-                )
-        except OSError as e:
-            logger.warning(f"Could not create /mainctrfs symlink: {e}")
-
-    # Rewrite workspace path to use the /mainctrfs prefix that matches
-    # what Calrissian sees in containers[0]'s volume mounts
     calrissian_workspace = workspace_root.replace(
         "/user_workspaces", "/mainctrfs/user_workspaces", 1
     )

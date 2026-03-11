@@ -50,6 +50,13 @@ ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV DASK_GATEWAY_SERVER="http://traefik-openeo-dask-gateway.openeo.svc.cluster.local:80"
 
+# Calrissian inspects containers[0] for PVC mounts. In Argo Workflow pods,
+# containers[0] is the 'wait' sidecar which mounts the workspace PVC at
+# /mainctrfs/user_workspaces, while the 'main' executor container mounts
+# at /user_workspaces. This symlink bridges the gap so Calrissian's
+# expected paths resolve correctly.
+RUN mkdir -p /mainctrfs && ln -s /user_workspaces /mainctrfs/user_workspaces
+
 USER ${USER_ID}
 
 CMD ["openeo_executor"]
