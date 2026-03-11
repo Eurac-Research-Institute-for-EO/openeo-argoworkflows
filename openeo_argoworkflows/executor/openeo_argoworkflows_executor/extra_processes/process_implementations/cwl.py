@@ -121,7 +121,16 @@ def run_cwl(
     results_path = os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results")
     os.makedirs(results_path, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="openeo_cwl_") as work_dir:
+    # Calrissian requires working directories to be on a PVC (not emptyDir).
+    # Use the workspace PVC path for CWL working dirs so Calrissian can
+    # share files between the orchestrator and CWL step pods.
+    workspace_root = os.environ.get("OPENEO_USER_WORKSPACE", results_path)
+    cwl_work_base = Path(workspace_root) / "_cwl_work"
+    cwl_work_base.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(
+        prefix="openeo_cwl_", dir=str(cwl_work_base)
+    ) as work_dir:
         work_dir = Path(work_dir)
 
         # Resolve CWL to a local file
@@ -144,7 +153,7 @@ def run_cwl(
         # Write inputs file
         inputs_path = _write_inputs(inputs, work_dir)
 
-        # Set up Calrissian output directory
+        # Set up Calrissian output and tmp dirs on the PVC
         calrissian_outdir = work_dir / "output"
         calrissian_outdir.mkdir(exist_ok=True)
 
