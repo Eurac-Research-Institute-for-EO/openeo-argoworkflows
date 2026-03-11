@@ -1,7 +1,10 @@
 import json
 
 from hera.workflows import Steps, Workflow, WorkflowsService, Step, Env
-from hera.workflows.models import Template, Container, Metadata, PersistentVolumeClaimVolumeSource, Volume, VolumeMount
+from hera.workflows.models import (
+    Template, Container, Metadata, PersistentVolumeClaimVolumeSource,
+    Volume, VolumeMount, EnvVar, EnvVarSource, ObjectFieldSelector,
+)
 
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 
@@ -38,7 +41,14 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                     name="executor",
                     container=Container(
                         env=[
-                            Env(name="STAC_API_URL", value=str(settings.STAC_API_URL))
+                            Env(name="STAC_API_URL", value=str(settings.STAC_API_URL)),
+                            # Calrissian requires its own pod name to orchestrate CWL step pods.
+                            EnvVar(
+                                name="CALRISSIAN_POD_NAME",
+                                value_from=EnvVarSource(
+                                    field_ref=ObjectFieldSelector(field_path="metadata.name")
+                                ),
+                            ),
                         ],
                         image=settings.OPENEO_EXECUTOR_IMAGE,
                         command=["openeo_executor"],
