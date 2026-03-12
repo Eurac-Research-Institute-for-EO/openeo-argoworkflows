@@ -23,9 +23,6 @@ inputs:
       position: 1
       valueFrom: |
         echo '$(self)' > output.txt
-      position: 2
-      valueFrom: |
-        echo '$(self)' > output.txt
 
 outputs:
   output_file:
