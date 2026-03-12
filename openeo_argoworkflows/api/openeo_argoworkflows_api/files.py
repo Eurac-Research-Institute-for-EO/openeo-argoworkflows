@@ -136,14 +136,21 @@ class ArgoFileRegister(FilesRegister):
         extention = splitext(absolute_path)[1]
         mime_types = {
             ".tif": "image/tiff; application=geotiff; profile=cloud-optimized",
+            ".tiff": "image/tiff; application=geotiff",
             ".nc": "application/netcdf",
-            ".json": "application/json"
+            ".json": "application/json",
+            ".geojson": "application/geo+json",
+            ".csv": "text/csv",
+            ".txt": "text/plain",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".xml": "application/xml",
+            ".zip": "application/zip",
+            ".gz": "application/gzip",
         }
 
-        try:
-            mime_type = mime_types[extention]
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=e.args[0])
+        mime_type = mime_types.get(extention, "application/octet-stream")
 
         range_request = request.headers.get("Range")
         fsize = fs.size(absolute_path)
