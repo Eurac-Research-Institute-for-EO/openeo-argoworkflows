@@ -279,11 +279,18 @@ class ArgoJobsRegister(JobsRegister):
         logs = []
         if resp.status_code == 200:
             raw_logs = resp.content.decode("utf8").split("\n")
-            logs = [
-                json.loads(log)["result"]["content"]
-                for log in raw_logs
-                if log != "" and "content" in json.loads(log)["result"].keys()
-            ]
+            for idx, log in enumerate(raw_logs):
+                if log == "":
+                    continue
+                parsed = json.loads(log)
+                if "content" not in parsed.get("result", {}).keys():
+                    continue
+                content = parsed["result"]["content"]
+                logs.append({
+                    "id": str(idx),
+                    "level": "info",
+                    "message": content,
+                })
 
         return JobsGetLogsResponse(
                 logs=logs,
