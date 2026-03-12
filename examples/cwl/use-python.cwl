@@ -1,18 +1,18 @@
 cwlVersion: v1.2
 class: CommandLineTool
-baseCommand: sh
-arguments: ["-c", "for i in $(seq 1 $(inputs.count)); do echo $(inputs.message); done > output.txt"]
+baseCommand: python3
+arguments: ["-c", "import json; data = {'name': '$(inputs.name)', 'items': list(range($(inputs.count)))}; open('result.json','w').write(json.dumps(data, indent=2))"]
 requirements:
   DockerRequirement:
-    dockerPull: alpine:3
+    dockerPull: python:3.11-slim
   InlineJavascriptRequirement: {}
 inputs:
-  message:
+  name:
     type: string
   count:
     type: int
 outputs:
-  output_file:
+  result:
     type: File
     outputBinding:
-      glob: output.txt
+      glob: result.json
