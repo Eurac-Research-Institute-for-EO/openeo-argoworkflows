@@ -118,12 +118,15 @@ def create_cwl_stac(
         json.dump(collection, f, indent=2)
     logger.info(f"Wrote CWL STAC collection to {collection_file}")
 
-    # Write items as inline_items.csv (same format as raster2stac)
-    items_file = os.path.join(stac_path, "inline_items.csv")
-    with open(items_file, "w") as f:
-        for item in items:
-            f.write(json.dumps(item) + "\n")
-    logger.info(f"Wrote {len(items)} CWL STAC items to {items_file}")
+    # Write individual item JSON files to items/ directory
+    # The API's get_results() reads STAC/items/*.json to build signed asset URLs
+    items_dir = os.path.join(stac_path, "items")
+    os.makedirs(items_dir, exist_ok=True)
+    for item in items:
+        item_file = os.path.join(items_dir, f"{item['id']}.json")
+        with open(item_file, "w") as f:
+            json.dump(item, f, indent=2)
+    logger.info(f"Wrote {len(items)} CWL STAC items to {items_dir}")
 
     # POST to STAC API
     try:
