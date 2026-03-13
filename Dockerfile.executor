@@ -15,7 +15,7 @@ RUN python3 -m venv $VIRTUAL_ENV && \
 
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ git && rm -rf /var/lib/apt/lists/*
 
 # Install GDAL Python bindings matching system libgdal version.
 # xcube-eopf (from EURAC processes-dask) requires gdal, but the PyPI version
