@@ -23,13 +23,16 @@ RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ && rm -rf /va
 RUN GDAL_VERSION=$(gdal-config --version) && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir "gdal==${GDAL_VERSION}"
 
-# Install all other dependencies via Poetry. The pre-installed gdal satisfies
-# xcube-core's requirement. Poetry may warn about version mismatch but will
-# not reinstall it.
-RUN poetry install --only main || true
-# Force-reinstall system-matching gdal in case poetry overwrote it
-RUN GDAL_VERSION=$(gdal-config --version) && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir --force-reinstall "gdal==${GDAL_VERSION}"
+# Export dependencies from poetry lock, exclude gdal (already installed from system),
+# then install via pip. This avoids poetry trying to build gdal 3.12.2 against
+# system libgdal 3.6.2 headers which causes a version mismatch build failure.
+RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
+    grep -v "^gdal==" /tmp/requirements.txt > /tmp/requirements-no-gdal.txt && \
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-no-gdal.txt && \
+    rm /tmp/requirements.txt /tmp/requirements-no-gdal.txt
+
+# Install the project itself to create the openeo_executor CLI entry point
+RUN $VIRTUAL_ENV/bin/pip install --no-deps --no-cache-dir .
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
@@ -39,6 +42,9 @@ RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf
 
 # Install CWL execution dependencies (calrissian for K8s CWL runner, cwltool for validation)
 RUN $VIRTUAL_ENV/bin/pip install calrissian cwltool
+
+# Verify the entry point exists
+RUN which openeo_executor
 
 ########################################################################################################################
 FROM python:3.11-slim-bookworm AS prod
