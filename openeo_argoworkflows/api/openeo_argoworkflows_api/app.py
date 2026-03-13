@@ -1,4 +1,7 @@
 
+import json
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
@@ -6,6 +9,7 @@ from starlette.responses import RedirectResponse
 from openeo_fastapi.api.app import OpenEOApi
 from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
 from openeo_fastapi.client.core import OpenEOCore
+from openeo_pg_parser_networkx.process_registry import Process as pgProcess
 
 from openeo_argoworkflows_api.jobs import ArgoJobsRegister
 from openeo_argoworkflows_api.files import ArgoFileRegister
@@ -57,6 +61,15 @@ app.router.add_api_route(
 )
 
 api = OpenEOApi(client=client, app=app)
+
+# Register custom EURAC processes (not in upstream openeo-processes-dask)
+_specs_dir = Path(__file__).parent / "specs"
+for spec_file in _specs_dir.glob("*.json"):
+    with open(spec_file) as f:
+        spec = json.load(f)
+    api.client.processes.process_registry[("predefined", spec["id"])] = pgProcess(spec)
+# Clear the cached process list so it includes the new processes
+api.client.processes.get_available_processes.cache_clear()
 
 api.app.add_middleware(
     CORSMiddleware,
