@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.11-slim-bookworm AS base
 
 WORKDIR /opt
 ARG POETRY_VERSION="1.8.3"
@@ -17,10 +17,19 @@ ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ && rm -rf /var/lib/apt/lists/*
 
-# Install GDAL Python bindings matching system GDAL version (required by xcube-eopf via EURAC processes-dask)
-RUN GDAL_VERSION=$(gdal-config --version) && $VIRTUAL_ENV/bin/pip install gdal==${GDAL_VERSION}
+# Install GDAL Python bindings matching system libgdal version.
+# xcube-eopf (from EURAC processes-dask) requires gdal, but the PyPI version
+# must match the system libgdal headers exactly.
+RUN GDAL_VERSION=$(gdal-config --version) && \
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir "gdal==${GDAL_VERSION}"
 
-RUN poetry install --only main
+# Install all other dependencies via Poetry. The pre-installed gdal satisfies
+# xcube-core's requirement. Poetry may warn about version mismatch but will
+# not reinstall it.
+RUN poetry install --only main || true
+# Force-reinstall system-matching gdal in case poetry overwrote it
+RUN GDAL_VERSION=$(gdal-config --version) && \
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir --force-reinstall "gdal==${GDAL_VERSION}"
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
