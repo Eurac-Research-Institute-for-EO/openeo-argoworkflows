@@ -32,8 +32,11 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-no-gdal.txt && \
     rm /tmp/requirements.txt /tmp/requirements-no-gdal.txt
 
-# Install the project itself to create the openeo_executor CLI entry point
-RUN $VIRTUAL_ENV/bin/pip install --no-deps --no-cache-dir .
+# Create the openeo_executor CLI entry point script directly.
+# Avoids pip install . which triggers poetry-core's path validation bug
+# ("'/usr/local/bin/python3.11' is not in the subpath of '/opt'").
+RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_argoworkflows_executor.cli import cli\ncli()\n' > $VIRTUAL_ENV/bin/openeo_executor && \
+    chmod +x $VIRTUAL_ENV/bin/openeo_executor
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
