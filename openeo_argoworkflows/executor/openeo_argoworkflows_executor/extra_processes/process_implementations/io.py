@@ -175,35 +175,43 @@ def load_collection(
             load_kwargs["bands"] = bands
             logger.info(f"Loading user-specified bands: {bands}")
         else:
-            # Select only data-related assets
+            # Known non-data assets to always exclude (thumbnails, previews, metadata)
+            non_data_assets = {
+                "thumbnail",
+                "tilejson",
+                "preview",
+                "metadata",
+                "visual",
+                "rendered_preview",
+                "info",
+            }
+
+            # Select only known data assets if present
+            known_data_assets = {
+                "data",
+                "B01",
+                "B02",
+                "B03",
+                "B04",
+                "B05",
+                "B06",
+                "B07",
+                "B08",
+                "B8A",
+                "B09",
+                "B10",
+                "B11",
+                "B12",
+            }
             data_assets = [
-                a
-                for a in available_assets
-                if a
-                in [
-                    "data",
-                    "visual",
-                    "B01",
-                    "B02",
-                    "B03",
-                    "B04",
-                    "B05",
-                    "B06",
-                    "B07",
-                    "B08",
-                    "B8A",
-                    "B09",
-                    "B10",
-                    "B11",
-                    "B12",
-                ]
+                a for a in available_assets if a in known_data_assets
             ]
             if not data_assets:
-                # Fallback: exclude known non-data assets
+                # Fallback: exclude known non-data assets, keep everything else
                 data_assets = [
                     a
                     for a in available_assets
-                    if a not in ["thumbnail", "tilejson", "preview", "metadata"]
+                    if a not in non_data_assets
                 ]
             if data_assets:
                 load_kwargs["bands"] = data_assets
