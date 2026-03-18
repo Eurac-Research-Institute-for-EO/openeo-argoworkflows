@@ -374,6 +374,14 @@ def save_result(
             out_data["y"].attrs["standard_name"] = "projection_y_coordinate"
             out_data["y"].attrs["long_name"] = "y coordinate of projection"
 
+    # Remove attrs that are not netCDF-serializable (dicts, objects, etc.)
+    # e.g. reduced_dimensions_min_values is a dict set by reduce_dimension
+    valid_types = (str, int, float, bytes, list, tuple, np.ndarray, np.generic)
+    for key in list(out_data.attrs):
+        if not isinstance(out_data.attrs[key], valid_types):
+            logger.debug(f"Dropping non-serializable attr '{key}': {type(out_data.attrs[key])}")
+            del out_data.attrs[key]
+
     logger.info(f"Writing netCDF to: {destination}")
     out_data.to_netcdf(path=destination, encoding=encoding)
 
