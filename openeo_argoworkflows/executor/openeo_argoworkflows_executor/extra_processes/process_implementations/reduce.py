@@ -4,10 +4,14 @@ STAC catalogs use inconsistent dimension names (DATE, time, X, Y, Lon, etc.)
 while odc-stac normalizes xarray dims to (t, x, y, bands). Users writing
 process graphs may use either convention. This wrapper maps common aliases
 to the actual xarray dim name before calling the upstream implementation.
+
+Also fixes netCDF serialization of reduced_dimensions_min_values attrs
+(numpy.datetime64 is not netCDF-serializable, so we convert to ISO string).
 """
 import logging
 from typing import Callable, Optional
 
+import numpy as np
 from openeo_processes_dask.process_implementations.cubes.reduce import (
     reduce_dimension as _upstream_reduce_dimension,
 )
@@ -58,6 +62,17 @@ def reduce_dimension(
             )
             dimension = resolved
 
-    return _upstream_reduce_dimension(
+    result = _upstream_reduce_dimension(
         data=data, reducer=reducer, dimension=dimension, context=context
     )
+
+    # Fix netCDF serialization: numpy.datetime64 is not a valid netCDF attr type.
+    # The upstream reduce_dimension stores min values in attrs for later use,
+    # but save_result chokes on datetime64. Convert to ISO 8601 string.
+    min_vals = result.attrs.get("reduced_dimensions_min_values")
+    if min_vals:
+        for key, val in min_vals.items():
+            if isinstance(val, (np.datetime64, np.generic)):
+                min_vals[key] = str(val)
+
+    return result
