@@ -216,6 +216,8 @@ def execute(process_graph, user_profile, dask_profile):
                 f"Raster2STAC failed for job {job_id}: {e} — falling back to create_stac_item"
             )
             # Fallback: build a minimal STAC collection using our own create_stac_item
+            # Write as a flat JSON file (not pystac's directory tree) because the API
+            # expects STAC/{job_id}.json to be a file, not a directory.
             try:
                 import pystac
 
@@ -224,25 +226,36 @@ def execute(process_graph, user_profile, dask_profile):
                     item = create_stac_item(filepath)
                     items.append(item)
 
-                # Build a minimal STAC collection from the items
-                extent = pystac.Extent(
-                    spatial=pystac.SpatialExtent(bboxes=[items[0].bbox] if items else [[-180, -90, 180, 90]]),
-                    temporal=pystac.TemporalExtent(intervals=[[
-                        items[0].datetime if items else None,
-                        items[-1].datetime if items else None,
-                    ]]),
-                )
-                collection = pystac.Collection(
-                    id=job_id,
-                    description=f"openEO batch job results for job {job_id}",
-                    extent=extent,
-                )
+                # Build a minimal STAC collection dict
+                collection_dict = {
+                    "type": "Collection",
+                    "id": job_id,
+                    "stac_version": "1.0.0",
+                    "description": f"openEO batch job results for job {job_id}",
+                    "links": [],
+                    "extent": {
+                        "spatial": {
+                            "bbox": [items[0].bbox] if items else [[-180, -90, 180, 90]],
+                        },
+                        "temporal": {
+                            "interval": [[
+                                items[0].datetime.isoformat() + "Z" if items and items[0].datetime else None,
+                                items[-1].datetime.isoformat() + "Z" if items and items[-1].datetime else None,
+                            ]],
+                        },
+                    },
+                    "license": "proprietary",
+                    "assets": {},
+                }
+
+                # Add result files as collection-level assets
                 for item in items:
-                    collection.add_item(item)
+                    for asset_key, asset in item.assets.items():
+                        collection_dict["assets"][asset_key] = asset.to_dict()
 
                 collection_file = f"{stac_path}/{job_id}.json"
-                collection.normalize_hrefs(stac_path)
-                collection.save(dest_href=collection_file)
+                with open(collection_file, "w") as f:
+                    json.dump(collection_dict, f, indent=2)
                 logger.info(f"Fallback STAC collection saved to {collection_file}")
             except Exception as fallback_err:
                 logger.warning(
