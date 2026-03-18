@@ -213,8 +213,41 @@ def execute(process_graph, user_profile, dask_profile):
 
         except Exception as e:
             logger.warning(
-                f"STAC publishing failed for job {job_id}, results are still available: {e}"
+                f"Raster2STAC failed for job {job_id}: {e} — falling back to create_stac_item"
             )
+            # Fallback: build a minimal STAC collection using our own create_stac_item
+            try:
+                import pystac
+
+                items = []
+                for filepath in result_files:
+                    item = create_stac_item(filepath)
+                    items.append(item)
+
+                # Build a minimal STAC collection from the items
+                extent = pystac.Extent(
+                    spatial=pystac.SpatialExtent(bboxes=[items[0].bbox] if items else [[-180, -90, 180, 90]]),
+                    temporal=pystac.TemporalExtent(intervals=[[
+                        items[0].datetime if items else None,
+                        items[-1].datetime if items else None,
+                    ]]),
+                )
+                collection = pystac.Collection(
+                    id=job_id,
+                    description=f"openEO batch job results for job {job_id}",
+                    extent=extent,
+                )
+                for item in items:
+                    collection.add_item(item)
+
+                collection_file = f"{stac_path}/{job_id}.json"
+                collection.normalize_hrefs(stac_path)
+                collection.save(dest_href=collection_file)
+                logger.info(f"Fallback STAC collection saved to {collection_file}")
+            except Exception as fallback_err:
+                logger.warning(
+                    f"Fallback STAC creation also failed for job {job_id}: {fallback_err}"
+                )
 
     # Handle non-NetCDF output files (e.g. from CWL workflows)
     # Create minimal STAC collection and items so they appear in job results
