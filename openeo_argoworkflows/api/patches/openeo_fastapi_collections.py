@@ -163,7 +163,8 @@ class CollectionRegister(EndpointRegister):
 
     async def get_collections(self):
         """
-        Returns Basic metadata for all datasets
+        Returns Basic metadata for all datasets, following STAC pagination
+        to retrieve all collections (not just the first page).
 
         Raises:
             HTTPException: Raises an exception with relevant status code and descriptive message of failure.
@@ -171,25 +172,48 @@ class CollectionRegister(EndpointRegister):
         Returns:
             Collections: The proxied request returned as a Collections object.
         """
+        all_collections = []
         path = "collections"
-        resp = await self._proxy_request(path)
 
-        if resp:
-            collections_list = [
-                _normalize_dimensions(collection)
-                for collection in resp["collections"]
-                if (
-                    not self.settings.STAC_COLLECTIONS_WHITELIST
-                    or collection["id"] in self.settings.STAC_COLLECTIONS_WHITELIST
-                )
-            ]
+        while path:
+            resp = await self._proxy_request(path)
+            if not resp:
+                break
 
-            return Collections(collections=collections_list, links=resp["links"])
-        else:
+            all_collections.extend(resp.get("collections", []))
+
+            # Follow the "next" link if present
+            next_link = next(
+                (link for link in resp.get("links", []) if link.get("rel") == "next"),
+                None,
+            )
+            if next_link and next_link.get("href"):
+                # Extract the relative path from the full URL
+                href = next_link["href"]
+                stac_url = self.settings.STAC_API_URL.rstrip("/")
+                if href.startswith(stac_url):
+                    path = href[len(stac_url):].lstrip("/")
+                else:
+                    path = href
+            else:
+                path = None
+
+        if not all_collections:
             raise HTTPException(
                 status_code=404,
                 detail=Error(code="NotFound", message="No Collections found."),
             )
+
+        collections_list = [
+            _normalize_dimensions(collection)
+            for collection in all_collections
+            if (
+                not self.settings.STAC_COLLECTIONS_WHITELIST
+                or collection["id"] in self.settings.STAC_COLLECTIONS_WHITELIST
+            )
+        ]
+
+        return Collections(collections=collections_list, links=[])
 
     async def get_collection_items(self, collection_id):
         """
