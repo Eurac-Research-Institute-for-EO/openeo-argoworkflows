@@ -41,6 +41,24 @@ _DIMENSION_NAME_MAP = {
 }
 
 
+def _sanitize_providers(collection_dict):
+    """Fix provider URLs that are missing the URL scheme.
+
+    Some STAC collections have provider URLs like 'www.example.com'
+    without 'https://', which fails Pydantic URL validation.
+    """
+    providers = collection_dict.get("providers")
+    if not providers or not isinstance(providers, list):
+        return collection_dict
+
+    for provider in providers:
+        url = provider.get("url")
+        if url and not url.startswith(("http://", "https://")):
+            provider["url"] = f"https://{url}"
+
+    return collection_dict
+
+
 def _normalize_dimensions(collection_dict):
     """Rename cube:dimensions keys to OpenEO standard names (x, y, t, bands).
 
@@ -150,6 +168,7 @@ class CollectionRegister(EndpointRegister):
             resp = await self._proxy_request(path)
 
             if resp:
+                _sanitize_providers(resp)
                 _normalize_dimensions(resp)
                 return Collection(**resp)
             raise HTTPException(
@@ -205,7 +224,7 @@ class CollectionRegister(EndpointRegister):
             )
 
         collections_list = [
-            _normalize_dimensions(collection)
+            _normalize_dimensions(_sanitize_providers(collection))
             for collection in all_collections
             if (
                 not self.settings.STAC_COLLECTIONS_WHITELIST
