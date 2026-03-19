@@ -5,7 +5,7 @@ from redis import Redis
 from rq import Queue
 from typing import Any
 
-from openeo_fastapi.client.psql.engine import modify
+from openeo_fastapi.client.psql.engine import modify, get
 from openeo_argoworkflows_api.psql.models import ArgoJob
 from openeo_argoworkflows_api.workflows import executor_workflow
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
@@ -85,6 +85,9 @@ def submit_job(job: ArgoJob):
 
 def poll_job_status(job: ArgoJob, metadata: Any):
     """ Submit the job to argo. """
+    existing = get(get_model = ArgoJob, primary_key = job.job_id)
+    if not existing:
+        return
     argo = WorkflowsService(
         host=settings.ARGO_WORKFLOWS_SERVER,
         verify_ssl=False,
