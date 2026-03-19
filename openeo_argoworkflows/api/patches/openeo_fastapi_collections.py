@@ -42,10 +42,12 @@ _DIMENSION_NAME_MAP = {
 
 
 def _sanitize_providers(collection_dict):
-    """Fix provider URLs that are missing the URL scheme.
+    """Remove providers with invalid URLs that fail Pydantic validation.
 
-    Some STAC collections have provider URLs like 'www.example.com'
-    without 'https://', which fails Pydantic URL validation.
+    Some STAC collections have provider URLs that are malformed:
+    '//www.asi.it', 'N/A', or URLs with embedded text.
+    Rather than trying to fix every variant, drop the url field
+    from providers that would fail validation.
     """
     providers = collection_dict.get("providers")
     if not providers or not isinstance(providers, list):
@@ -53,8 +55,17 @@ def _sanitize_providers(collection_dict):
 
     for provider in providers:
         url = provider.get("url")
-        if url and not url.startswith(("http://", "https://")):
-            provider["url"] = f"https://{url}"
+        if not url:
+            continue
+        # Fix protocol-relative URLs
+        if url.startswith("//"):
+            provider["url"] = f"https:{url}"
+        # Add scheme if missing
+        elif not url.startswith(("http://", "https://")):
+            provider.pop("url", None)
+        # Remove URLs with spaces or embedded text (e.g. CSV-like values)
+        elif " " in url:
+            provider.pop("url", None)
 
     return collection_dict
 
