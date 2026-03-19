@@ -1,4 +1,5 @@
 import datetime
+import shutil
 import fsspec
 import json
 import logging
@@ -193,9 +194,34 @@ class ArgoJobsRegister(JobsRegister):
     def delete_job(
         self, job_id: uuid.UUID, user: User = Depends(Authenticator.validate)
     ):
+        job = engine.get(get_model=ArgoJob, primary_key = job_id)
+        if job.status in (Status.queued, Status.running):
+            try:
+                self.workflows_service.stop_workflow(
+                    name=job.workflowname,
+                    req=WorkflowStopRequest(
+                        name = job.workflowname,
+                        namespace = self.settings.ARGO_WORKFLOWS_NAMESPACE
+                ),
+                namespace = self.settings.ARGO_WORKFLOWS_NAMESPACE
+                )
+            except Exception:
+                pass
+
+        # Delete the job results file from database
+        job_workspace = (
+            self.settings.OPENEO_WORKSPACE_ROOT
+            / str(user.user_id)
+            / str(job.job_id)
+        )
+        if job_workspace.exists():
+            shutil.rmtree(job_workspace)
         
+        # Delete the job record from database
+        engine.delete(delete_model=ArgoJob, primary_key=job_id)
+
         return Response(
-            status_code=202,
+            status_code=204,
             content="The resource has been deleted successfully.",
         )
     
