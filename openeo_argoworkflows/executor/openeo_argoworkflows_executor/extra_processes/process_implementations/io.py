@@ -379,6 +379,9 @@ def save_result(
     reduced_mins = out_data.attrs.get("reduced_dimensions_min_values", {})
     for dim_name, min_val in reduced_mins.items():
         if dim_name not in out_data.dims:
+            # Convert string datetimes back to datetime64 for temporal dimensions
+            if dim_name in ("t", "time", "date", "DATE") and isinstance(min_val, str):
+                min_val = np.datetime64(min_val)
             out_data = out_data.expand_dims({dim_name: [min_val]})
             # Set openeo attrs so raster2stac recognizes the temporal dimension
             if dim_name in ("t", "time", "date", "DATE"):
