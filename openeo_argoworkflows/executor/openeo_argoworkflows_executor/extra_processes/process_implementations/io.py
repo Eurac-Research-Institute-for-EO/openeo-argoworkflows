@@ -383,6 +383,11 @@ def save_result(
             del out_data.attrs[key]
 
     logger.info(f"Writing netCDF to: {destination}")
+    # Restore reduced temporal dimensions so raster2stac can process it
+    reduced_dims = out_data.attrs.get("reduced_dimensions_min_values",  {})
+    for dim_name, min_val in reduced_dims.items():
+        if dim_name not in out_data.dims:
+            out_data = out_data.expand_dims({dim_name: [min_val]})
     out_data.to_netcdf(path=destination, encoding=encoding)
 
     # Re-open with netCDF4 to fix spatial_ref: xarray writes scalar coords as
