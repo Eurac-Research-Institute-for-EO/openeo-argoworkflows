@@ -392,8 +392,13 @@ def save_result(
     valid_types = (str, int, float, bytes, list, tuple, np.ndarray, np.generic)
     for key in list(out_data.attrs):
         if not isinstance(out_data.attrs[key], valid_types):
-            logger.debug(f"Dropping non-serializable attr '{key}': {type(out_data.attrs[key])}")
+            logger.debug(f"Dropping non-serializable dataset attr '{key}': {type(out_data.attrs[key])}")
             del out_data.attrs[key]
+    for var in out_data.data_vars:
+        for key in list(out_data[var].attrs):
+            if not isinstance(out_data[var].attrs[key], valid_types):
+                logger.debug(f"Dropping non-serializable attr '{key}' on '{var}': {type(out_data[var].attrs[key])}")
+                del out_data[var].attrs[key]
 
     logger.info(f"Writing netCDF to: {destination}")
     out_data.to_netcdf(path=destination, encoding=encoding)
