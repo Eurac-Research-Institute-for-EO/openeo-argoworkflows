@@ -40,7 +40,7 @@ RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_a
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
-RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs numpy \
+RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs "numpy<2" \
         pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray zarr requests && \
     $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
 
