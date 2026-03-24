@@ -21,28 +21,20 @@ __all__ = ["reduce_dimension"]
 
 logger = logging.getLogger(__name__)
 
-# Map common user-facing names to the xarray dim names produced by odc-stac
-_DIMENSION_ALIASES = {
-    # temporal
-    "time": "t",
-    "DATE": "t",
-    "date": "t",
-    "temporal": "t",
-    # spatial x
-    "X": "x",
-    "E": "x",
-    "Lon": "x",
-    "lon": "x",
-    "longitude": "x",
-    # spatial y
-    "Y": "y",
-    "N": "y",
-    "Lat": "y",
-    "lat": "y",
-    "latitude": "y",
-    # bands
-    "band": "bands",
-}
+# Bidirectional mapping of dimension name aliases.
+# Groups of equivalent names — any name in a group can resolve to any other.
+_DIMENSION_GROUPS = [
+    {"t", "time", "DATE", "date", "temporal"},
+    {"x", "X", "E", "Lon", "lon", "longitude"},
+    {"y", "Y", "N", "Lat", "lat", "latitude"},
+    {"bands", "band"},
+]
+
+# Build lookup: for each name, store all other names in its group
+_DIMENSION_ALIASES = {}
+for group in _DIMENSION_GROUPS:
+    for name in group:
+        _DIMENSION_ALIASES[name] = group - {name}
 
 
 def reduce_dimension(
@@ -52,15 +44,16 @@ def reduce_dimension(
     context: Optional[dict] = None,
 ) -> RasterCube:
     if dimension not in data.dims and dimension in _DIMENSION_ALIASES:
-        resolved = _DIMENSION_ALIASES[dimension]
-        if resolved in data.dims:
-            logger.info(
-                "Resolved dimension alias '%s' -> '%s' (available: %s)",
-                dimension,
-                resolved,
-                list(data.dims),
-            )
-            dimension = resolved
+        for alias in _DIMENSION_ALIASES[dimension]:
+            if alias in data.dims:
+                logger.info(
+                    "Resolved dimension alias '%s' -> '%s' (available: %s)",
+                    dimension,
+                    alias,
+                    list(data.dims),
+                )
+                dimension = alias
+                break
 
     result = _upstream_reduce_dimension(
         data=data, reducer=reducer, dimension=dimension, context=context
