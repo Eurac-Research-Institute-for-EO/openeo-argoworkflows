@@ -87,10 +87,15 @@ class OpenEOCore:
         """
         registers = [self.collections, self.files, self.jobs, self.processes]
 
-        endpoints = self.endpoints
+        endpoints = list(self.endpoints)
+        seen = {(e.path, m) for e in endpoints for m in e.methods}
         for register in registers:
             if register:
-                endpoints.extend(register.endpoints)
+                for e in register.endpoints:
+                    for m in e.methods:
+                        if (e.path, m) not in seen:
+                            seen.add((e.path, m))
+                            endpoints.append(e)
         return endpoints
 
     def get_capabilities(self) -> Capabilities:
