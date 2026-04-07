@@ -11,7 +11,7 @@ from attrs import define, field
 from fastapi import Depends, HTTPException, Response
 
 from openeo_fastapi.api.models import (
-    Capabilities,
+    Capabilities as _Capabilities,
     ConformanceGetResponse,
     CredentialsOidcGetResponse,
     DefaultClient,
@@ -29,6 +29,17 @@ from openeo_fastapi.client.files import FilesRegister
 from openeo_fastapi.client.jobs import JobsRegister
 from openeo_fastapi.client.processes import ProcessRegister
 from openeo_fastapi.client.settings import AppSettings
+from pydantic import Field as PydanticField
+from typing import Dict, Any
+
+
+class Capabilities(_Capabilities):
+    """Extended Capabilities model that includes output_formats in the root response."""
+    output_formats: Optional[Dict[str, Any]] = PydanticField(
+        None,
+        description="Map of supported output file formats.",
+    )
+
 
 APPLICATION_ENDPOINTS = [
     Endpoint(
@@ -114,6 +125,7 @@ class OpenEOCore:
             billing=self.billing,
             links=self.links,
             endpoints=self._combine_endpoints(),
+            output_formats={f.title: f.dict() for f in self.output_formats},
         )
 
     def get_credentials_oidc(self) -> CredentialsOidcGetResponse:
