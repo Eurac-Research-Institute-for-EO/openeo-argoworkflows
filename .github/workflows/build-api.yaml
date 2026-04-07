@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - eurac-main
     paths:
       - 'openeo_argoworkflows/api/**'
   workflow_dispatch:

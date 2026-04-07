@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - eurac-main
     paths:
       - 'Dockerfile.executor'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/**'
