@@ -125,7 +125,7 @@ class OpenEOCore:
             billing=self.billing,
             links=self.links,
             endpoints=self._combine_endpoints(),
-            output_formats={f.title: f.dict() for f in self.output_formats},
+            output_formats=self.get_file_formats().dict().get("output", {}),
         )
 
     def get_credentials_oidc(self) -> CredentialsOidcGetResponse:
