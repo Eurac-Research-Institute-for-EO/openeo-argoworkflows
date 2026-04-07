@@ -6,10 +6,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
+from fastapi.responses import JSONResponse
 from openeo_fastapi.api.app import OpenEOApi
 from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
 from openeo_fastapi.client.core import OpenEOCore
-from patches.openeo_fastapi_core import Capabilities
 from openeo_pg_parser_networkx.process_registry import Process as pgProcess
 
 from openeo_argoworkflows_api.jobs import ArgoJobsRegister
@@ -62,14 +62,6 @@ app.router.add_api_route(
 )
 
 api = OpenEOApi(client=client, app=app)
-
-# Re-register root capabilities route with our extended Capabilities model
-# that includes output_formats (openeo-fastapi omits it by default)
-for route in api.app.routes:
-    if getattr(route, "name", None) == "get_capabilities":
-        route.response_model = Capabilities
-        route.response_model_exclude_none = True
-        break
 
 # Register custom EURAC processes (not in upstream openeo-processes-dask)
 _specs_dir = Path(__file__).parent / "specs"
@@ -128,6 +120,21 @@ api.app.router.add_api_route(
     response_model_exclude_none=True,
     methods=["GET"],
     endpoint=redirect_wellknown,
+)
+
+def get_capabilities_with_formats():
+    """Override GET / to include output_formats, which openeo-fastapi omits."""
+    data = client.get_capabilities().dict(exclude_none=True)
+    data["output_formats"] = client.get_file_formats().dict(exclude_none=True).get("output", {})
+    return JSONResponse(content=data)
+
+api.app.router.add_api_route(
+    name="capabilities_override",
+    path=f"/{client.settings.OPENEO_VERSION}/",
+    response_model=None,
+    methods=["GET"],
+    endpoint=get_capabilities_with_formats,
+    include_in_schema=False,
 )
 
 app = api.app
