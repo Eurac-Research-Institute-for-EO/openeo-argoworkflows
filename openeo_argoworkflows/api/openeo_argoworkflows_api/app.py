@@ -9,6 +9,7 @@ from starlette.responses import RedirectResponse
 from openeo_fastapi.api.app import OpenEOApi
 from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
 from openeo_fastapi.client.core import OpenEOCore
+from patches.openeo_fastapi_core import Capabilities
 from openeo_pg_parser_networkx.process_registry import Process as pgProcess
 
 from openeo_argoworkflows_api.jobs import ArgoJobsRegister
@@ -61,6 +62,14 @@ app.router.add_api_route(
 )
 
 api = OpenEOApi(client=client, app=app)
+
+# Re-register root capabilities route with our extended Capabilities model
+# that includes output_formats (openeo-fastapi omits it by default)
+for route in api.app.routes:
+    if getattr(route, "name", None) == "get_capabilities":
+        route.response_model = Capabilities
+        route.response_model_exclude_none = True
+        break
 
 # Register custom EURAC processes (not in upstream openeo-processes-dask)
 _specs_dir = Path(__file__).parent / "specs"
