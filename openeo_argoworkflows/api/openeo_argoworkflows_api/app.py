@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
-from fastapi.responses import JSONResponse
 from openeo_fastapi.api.app import OpenEOApi
 from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
 from openeo_fastapi.client.core import OpenEOCore
@@ -120,21 +119,6 @@ api.app.router.add_api_route(
     response_model_exclude_none=True,
     methods=["GET"],
     endpoint=redirect_wellknown,
-)
-
-def get_capabilities_with_formats():
-    """Override GET / to include output_formats, which openeo-fastapi omits."""
-    data = client.get_capabilities().dict(exclude_none=True)
-    data["output_formats"] = client.get_file_formats().dict(exclude_none=True).get("output", {})
-    return JSONResponse(content=data)
-
-api.app.router.add_api_route(
-    name="capabilities_override",
-    path=f"/{client.settings.OPENEO_VERSION}/",
-    response_model=None,
-    methods=["GET"],
-    endpoint=get_capabilities_with_formats,
-    include_in_schema=False,
 )
 
 app = api.app
