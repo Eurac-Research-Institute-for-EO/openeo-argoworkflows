@@ -12,9 +12,11 @@ requirements:
           #!/bin/sh
           COUNT=$1
           MESSAGE=$2
-          for i in $(seq 1 "$COUNT"); do
+          for i in \$(seq 1 "$COUNT"); do
             echo "$MESSAGE"
-          done > output.txt
+          done
+
+stdout: output.txt
 
 inputs:
   count:
@@ -28,6 +30,4 @@ inputs:
 
 outputs:
   output_file:
-    type: File
-    outputBinding:
-      glob: output.txt
+    type: stdout
