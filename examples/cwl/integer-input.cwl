@@ -1,22 +1,33 @@
 cwlVersion: v1.2
 class: CommandLineTool
-baseCommand: [sh, -c]
-arguments:
-  - valueFrom: "for i in $(seq 1 $(inputs.count)); do echo $(inputs.message); done"
-    shellQuote: false
+baseCommand: [sh, script.sh]
+
 requirements:
-  ShellCommandRequirement: {}
   DockerRequirement:
     dockerPull: alpine:3
-  InlineJavascriptRequirement: {}
-
-stdout: output.txt
+  InitialWorkDirRequirement:
+    listing:
+      - entryname: script.sh
+        entry: |
+          #!/bin/sh
+          COUNT=$1
+          MESSAGE=$2
+          for i in $(seq 1 "$COUNT"); do
+            echo "$MESSAGE"
+          done > output.txt
 
 inputs:
-  message:
-    type: string
   count:
     type: int
+    inputBinding:
+      position: 1
+  message:
+    type: string
+    inputBinding:
+      position: 2
+
 outputs:
   output_file:
-    type: stdout
+    type: File
+    outputBinding:
+      glob: output.txt
