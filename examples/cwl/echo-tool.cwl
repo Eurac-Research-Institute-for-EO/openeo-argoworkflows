@@ -22,7 +22,7 @@ inputs:
     inputBinding:
       position: 1
       valueFrom: |
-        echo '$(self)' > output.txt
+        echo '$(self)' > $(runtime.outdir)/output.txt
 
 outputs:
   output_file:

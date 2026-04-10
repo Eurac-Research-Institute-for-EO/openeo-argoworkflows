@@ -3,7 +3,7 @@ class: CommandLineTool
 baseCommand: [sh, -c]
 arguments:
   - valueFrom: |
-      for i in \$(seq 1 $(inputs.count)); do echo $(inputs.message); done > output.txt
+      for i in \$(seq 1 $(inputs.count)); do echo $(inputs.message); done > $(runtime.outdir)/output.txt
     shellQuote: false
 requirements:
   ShellCommandRequirement: {}
