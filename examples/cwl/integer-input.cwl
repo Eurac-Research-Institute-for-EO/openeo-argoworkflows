@@ -1,8 +1,12 @@
 cwlVersion: v1.2
 class: CommandLineTool
-baseCommand: sh
-arguments: ["-c", "for i in $(seq 1 $(inputs.count)); do echo $(inputs.message); done > output.txt"]
+baseCommand: [sh, -c]
+arguments:
+  - valueFrom: |
+      for i in \$(seq 1 $(inputs.count)); do echo $(inputs.message); done > output.txt
+    shellQuote: false
 requirements:
+  ShellCommandRequirement: {}
   DockerRequirement:
     dockerPull: alpine:3
   InlineJavascriptRequirement: {}
