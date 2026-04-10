@@ -15,6 +15,28 @@ Follow steps in order.
 
 ---
 
+## DNS Setup (openeo.eurac.edu)
+
+The current DNS setup is **not a direct DNS record to the VM**. It goes through an Apache reverse proxy:
+
+```
+openeo.eurac.edu → Andrea's server (Apache reverse proxy) → <VM_IP>:80
+```
+
+### If the VM IP changes
+
+1. Ask **Andrea** to update the Apache reverse proxy target to the new VM IP.
+2. The DNS record (`openeo.eurac.edu`) itself does not need to change — it always points to Andrea's server.
+
+### If starting completely from scratch (new hostname)
+
+1. Submit an **ICT ticket** to Eurac IT to create a DNS record pointing the desired hostname to the new VM IP.
+2. Request a **TLS certificate** for the hostname in the same ticket.
+3. Update the Keycloak client `openeo-apisix` redirect URIs to use the new hostname (edp-portal.eurac.edu → Clients → openeo-apisix → Valid Redirect URIs).
+4. Update the helm deployment: `--set global.env.apiDns=<new-hostname>`
+
+---
+
 ## Step 1 — Install microk8s
 
 ```bash
