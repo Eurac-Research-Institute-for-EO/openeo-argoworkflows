@@ -62,10 +62,14 @@ jobs:
       - name: Build and run dev container task
         if: ${{ steps.changes.outputs.executor == 'true' }}
         uses: devcontainers/ci@v0.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           subFolder: openeo_argoworkflows/executor
+          inheritEnv: true
           # Change this to be your CI task/script
           runCmd: |
+            git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
             poetry config virtualenvs.in-project true
             poetry install --with dev
             poetry run pytest 
