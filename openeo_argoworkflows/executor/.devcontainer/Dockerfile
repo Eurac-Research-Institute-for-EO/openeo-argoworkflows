@@ -10,6 +10,8 @@ RUN if [ "${POETRY_VERSION}" != "none" ]; then su vscode -c "umask 0002 && pip3 
 RUN rm -f /etc/apt/sources.list.d/yarn.list && \
     apt update -qy && \
     apt install -qy --no-install-recommends \
-        git
+        git \
+        libgdal-dev \
+        gdal-bin
 
 WORKDIR /openeo_argoworkflows_executor
