@@ -108,14 +108,16 @@ class TestCreateCwlStac:
             assert collection["id"] == "test-job-123"
             assert collection["type"] == "Collection"
 
-            # Check items were created
-            items_file = os.path.join(stac_path, "inline_items.csv")
-            assert os.path.exists(items_file)
-            with open(items_file) as f:
-                lines = [line.strip() for line in f if line.strip()]
-            assert len(lines) == 2
+            # Check items were created (one JSON file per output file in items/)
+            items_dir = os.path.join(stac_path, "items")
+            assert os.path.isdir(items_dir)
+            item_files = [f for f in os.listdir(items_dir) if f.endswith(".json")]
+            assert len(item_files) == 2
 
-            item1 = json.loads(lines[0])
+            with open(os.path.join(items_dir, "output.json")) as f:
+                item1 = json.load(f)
             assert item1["type"] == "Feature"
             assert item1["collection"] == "test-job-123"
             assert "output.txt" in item1["assets"]
+
+
