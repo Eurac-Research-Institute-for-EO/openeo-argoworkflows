@@ -7,7 +7,8 @@ ENV POETRY_VIRTUALENVS_IN_PROJECT 1
 ARG POETRY_VERSION="1.8.3"
 RUN if [ "${POETRY_VERSION}" != "none" ]; then su vscode -c "umask 0002 && pip3 install poetry==${POETRY_VERSION}"; fi
 
-RUN apt update -qy && \
+RUN rm -f /etc/apt/sources.list.d/yarn.list && \
+    apt update -qy && \
     apt install -qy --no-install-recommends \
         postgresql-13 \
         git
