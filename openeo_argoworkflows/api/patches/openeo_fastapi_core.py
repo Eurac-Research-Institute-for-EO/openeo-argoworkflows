@@ -244,4 +244,15 @@ class OpenEOCore:
         Returns:
             UdfRuntimesGetResponse: The UDF runtimes available in this api deployment.
         """
-        return {}
+        return {
+            "EOAP-CWL": {
+                "title": "EOAP-CWL",
+                "type": "language",
+                "default": "1",
+                "versions": {
+                    "1": {
+                        "libraries": {}
+                    }
+                }
+            }
+        }

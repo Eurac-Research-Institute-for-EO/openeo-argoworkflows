@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-__all__ = ["run_cwl"]
+__all__ = ["run_cwl", "run_udf"]
 
 logger = logging.getLogger(__name__)
 
@@ -277,3 +277,31 @@ def run_cwl(
             "collected_files": collected_files,
             "status": "completed",
         }
+
+def run_udf(
+    data=None,
+    udf: str = "",
+    runtime: str = "",
+    version: Optional[str] = None,
+    context: Optional[dict] = None,
+    **kwargs,
+):
+    """run_udf handler for EOAP-CWL runtime.   
+
+    Maps run_udf parameters to run_cwl:
+      udf     -> cwl  (the CWL document or URL)
+      context -> inputs (CWL input key-value pairs)
+
+    The `data` parameter is ignored — CWL workflows receive
+    pre-staged inputs via `context`, not a datacube.
+    """
+    if runtime.lower() != "eoap-cwl":
+        raise RuntimeError(
+            f"Unsupported runtime '{runtime}'. This backend only supports 'EOAP-CWL'."
+        )
+
+    return run_cwl(
+        cwl=udf,
+        inputs=context or {},
+        **kwargs,
+    )

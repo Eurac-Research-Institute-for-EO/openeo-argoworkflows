@@ -66,6 +66,7 @@ jobs:
           subFolder: openeo_argoworkflows/executor
           # Change this to be your CI task/script
           runCmd: |
+            git config --global url."https://github.com/".insteadOf "git@github.com:"
             poetry config virtualenvs.in-project true
-            poetry install --with dev --all-extras
+            poetry install --with dev
             poetry run pytest 
