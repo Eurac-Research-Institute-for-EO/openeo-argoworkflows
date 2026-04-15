@@ -1877,12 +1877,12 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "gdal"
-version = "3.12.2"
+version = "3.6.2"
 description = "GDAL: Geospatial Data Abstraction Library"
 optional = false
 python-versions = ">=3.8.0"
 files = [
-    {file = "gdal-3.12.2.tar.gz", hash = "sha256:a5afa8e55a19b296a004a15d38fe3ad60cc380f1f090e2aab5d35331008c970f"},
+    {file = "GDAL-3.6.2.tar.gz", hash = "sha256:a167cde1813707d91a938dad1a22f280f5ad28c45980d42e948fb8c59f890f5a"},
 ]
 
 [package.extras]
