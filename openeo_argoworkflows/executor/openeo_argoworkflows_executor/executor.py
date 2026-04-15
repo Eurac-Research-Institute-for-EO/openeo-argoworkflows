@@ -67,10 +67,23 @@ def prepare_graphs(process_graph: OpenEOProcessGraph):
 
 
 def _is_cwl_job(pg_data: dict) -> bool:
-    """Check if the process graph is a CWL job (contains run_cwl as a node)."""
+    """Check if the process graph is a CWL job.
+
+    Detects either:
+    - process_id = "run_cwl" (legacy)
+    - process_id = "run_udf" with runtime argument == "EOAP-CWL" (case-insensitive)
+    """
     for node_id, node in pg_data.items():
-        if isinstance(node, dict) and node.get("process_id") == "run_cwl":
+        if not isinstance(node, dict):
+            continue
+        pid = node.get("process_id")
+        if pid == "run_cwl":
             return True
+        if pid == "run_udf":
+            args = node.get("arguments", {})
+            runtime = args.get("runtime", "")
+            if isinstance(runtime, str) and runtime.lower() == "eoap-cwl":
+                return True
     return False
 
 

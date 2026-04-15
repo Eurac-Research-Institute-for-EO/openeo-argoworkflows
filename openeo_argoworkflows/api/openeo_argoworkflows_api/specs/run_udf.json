@@ -1,0 +1,92 @@
+{
+    "id": "run_udf",
+    "summary": "Run a UDF (User-Defined Function) or EOAP-CWL workflow",
+    "description": "Runs a user-defined function (UDF) or an EOAP-CWL workflow against a data cube.\n\nThis backend supports the `EOAP-CWL` runtime. Pass the CWL document as the `udf` parameter and the CWL input values as the `context` parameter.\n\nThe endorsed staging pattern is: `load_collection → save_result → context → run_udf(EOAP-CWL)`. The CWL workflow receives files staged by `save_result` and must produce a STAC catalog as output.",
+    "categories": [
+        "cubes",
+        "import"
+    ],
+    "experimental": true,
+    "parameters": [
+        {
+            "name": "data",
+            "description": "The data to process. May be null when using EOAP-CWL with pre-staged inputs.",
+            "schema": [
+                {
+                    "type": "object",
+                    "subtype": "datacube"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "optional": true,
+            "default": null
+        },
+        {
+            "name": "udf",
+            "description": "The UDF code or CWL document to execute. For `EOAP-CWL` runtime: provide the CWL document as an inline YAML/JSON string or a URL pointing to a remote `.cwl` file.",
+            "schema": [
+                {
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "runtime",
+            "description": "The UDF runtime identifier. Use `EOAP-CWL` to execute a CWL workflow via Calrissian on Kubernetes.",
+            "schema": [
+                {
+                    "type": "string"
+                }
+            ]
+        },
+        {
+            "name": "version",
+            "description": "The runtime version. For `EOAP-CWL`, use `\"1\"` (default).",
+            "schema": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "optional": true,
+            "default": null
+        },
+        {
+            "name": "context",
+            "description": "Additional context passed to the UDF. For `EOAP-CWL` runtime: a flat key-value mapping of CWL input parameter names to their values.",
+            "schema": [
+                {
+                    "type": "object"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "optional": true,
+            "default": null
+        }
+    ],
+    "returns": {
+        "description": "The processed data cube or CWL workflow outputs.",
+        "schema": [
+            {
+                "type": "object",
+                "subtype": "datacube"
+            },
+            {
+                "type": "object"
+            }
+        ]
+    },
+    "links": [
+        {
+            "href": "https://www.commonwl.org/",
+            "rel": "about",
+            "title": "Common Workflow Language specification"
+        }
+    ]
+}
