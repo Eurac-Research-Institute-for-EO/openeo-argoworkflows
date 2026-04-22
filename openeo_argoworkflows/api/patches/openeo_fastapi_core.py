@@ -251,6 +251,7 @@ class OpenEOCore:
                 "default": "1",
                 "versions": {
                     "1": {
+                        "description": "EOAP-CWL via Calrissian on Kubernetes",
                         "libraries": {}
                     }
                 }
