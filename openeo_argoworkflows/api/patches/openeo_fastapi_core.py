@@ -52,6 +52,10 @@ APPLICATION_ENDPOINTS = [
         path="/file_formats",
         methods=["GET"],
     ),
+    Endpoint(
+        path="/udf_runtimes",
+        methods=["GET"]
+    )
 ]
 
 
