@@ -275,12 +275,25 @@ def run_cwl(
         # Collect output files to RESULTS/
         stac_root = _find_stac_root(calrissian_outdir)
         if stac_root:
+            job_id = os.environ.get("OPENEO_JOB_ID", "result")
             stac_path = Path(workspace_root) / "STAC"
             if stac_path.exists():
                 shutil.rmtree(stac_path)
-
+                
             shutil.copytree(str(calrissian_outdir), str(stac_path))
-            logger.info(f"CWL produced STAC root ({stac_root.name}) - copied tree to {stac_path}")
+            # Rename root to {job_id}.json as expected by the API
+            copied_root = stac_path / stac_root.name
+            if copied_root.exists() and copied_root.name != f"{job_id}.json":
+                copied_root.rename(stac_path / f"{job_id}.json")
+
+            # Move any item JSON files (not the collection) into items/ subdir
+            items_dir = stac_path / "items"
+            items_dir.mkdir(exist_ok=True)
+            for f in list(stac_path.iterdir()):
+                if f.is_file() and f.suffix == ".json" and f.name != f"{job_id}.json":
+                    f.rename(items_dir / f.name)
+
+            logger.info(f"CWL produced STAC root ({stac_root.name}) - restructured to {stac_path}")
             collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
         else:
             # No STAC root -  flat file copy + generate STAC via stac_cwl.py
