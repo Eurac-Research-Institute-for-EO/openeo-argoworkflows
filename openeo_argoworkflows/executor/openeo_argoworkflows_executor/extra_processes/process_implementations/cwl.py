@@ -73,6 +73,13 @@ def _validate_cwl(cwl_path: Path) -> dict:
 
     return {"valid": False, "errors": errors}
 
+def _find_stac_root(directory: Path) -> Optional[Path]:
+    """Search for a STAC root file in the calrissian output directory."""
+    for name in ("catalog.json", "catalogue.json","collection.json"):
+        candidate = directory / name
+        if candidate.exists():
+            return candidate
+    return None
 
 def _collect_calrissian_outputs(calrissian_outdir: Path, results_path: Path) -> list:
     """Copy Calrissian output files to the openEO results directory.
@@ -266,11 +273,21 @@ def run_cwl(
                 logger.warning("Could not parse CWL stdout as JSON")
 
         # Collect output files to RESULTS/
-        collected_files = _collect_calrissian_outputs(
-            calrissian_outdir, Path(results_path)
-        )
-        logger.info(f"Collected {len(collected_files)} output files to {results_path}")
+        stac_root = _find_stac_root(calrissian_outdir)
+        if stac_root:
+            stac_path = Path(workspace_root) / "STAC"
+            if stac_path.exists():
+                shutil.rmtree(stac_path)
 
+            shutil.copytree(str(calrissian_outdir), str(stac_path))
+            logger.info(f"CWL produced STAC root ({stac_root.name}) - copied tree to {stac_path}")
+            collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
+        else:
+            # No STAC root -  flat file copy + generate STAC via stac_cwl.py
+            collected_files = _collect_calrissian_outputs(
+                calrissian_outdir, Path(results_path)
+            )
+            logger.info(f"Collected {len(collected_files)} output files to {results_path}")
         # Return output metadata for downstream processing
         return {
             "cwl_outputs": cwl_outputs,
