@@ -286,16 +286,27 @@ def run_cwl(
             if copied_root.exists() and copied_root.name != f"{job_id}.json":
                 copied_root.rename(stac_path / f"{job_id}.json")
 
-            # Move any item JSON files (not the collection) into items/ subdir
+            # Move STAC Item files (type==Feature) from STAC/ root into items/ subdir
             items_dir = stac_path / "items"
             items_dir.mkdir(exist_ok=True)
+            collection_file = stac_path / f"{job_id}.json"
+            for candidate in list(stac_path.iterdir()):
+                if candidate.suffix != ".json" or candidate == collection_file:
+                    continue
+                try:
+                    with open(candidate) as f:
+                        j = json.load(f)
+                    if j.get("type") == "Feature":
+                        shutil.move(str(candidate), str(items_dir / candidate.name))
+                except Exception:
+                    pass
+
+            # Rewrite relative asset hrefs to absolute paths in moved item files
             for item_file in items_dir.iterdir():
                 if item_file.suffix != ".json":
                     continue
                 with open(item_file) as f:
-                   
                     item_dict = json.load(f)
-
                 changed = False
                 for asset_val in item_dict.get("assets", {}).values():
                     href = asset_val.get("href", "")
@@ -304,7 +315,6 @@ def run_cwl(
                         if abs_path.exists():
                             asset_val["href"] = str(abs_path)
                             changed = True
-
                 if changed:
                     with open(item_file, "w") as f:
                         json.dump(item_dict, f, indent=2)
