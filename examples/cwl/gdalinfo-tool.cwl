@@ -24,7 +24,7 @@ requirements:
           import sys
           from datetime import datetime, timezone
 
-          input_path = sys.argv[1]  # openeo_data — injected by run_udf from save_result
+          input_path = sys.argv[1]  # staged local path — Calrissian copies openeo_data File here
           now = datetime.now(timezone.utc).isoformat()
 
           # Run gdalinfo
@@ -82,7 +82,7 @@ baseCommand: ["python3", "run.py"]
 
 inputs:
   openeo_data:
-    type: string
+    type: File
     inputBinding:
       position: 1
 

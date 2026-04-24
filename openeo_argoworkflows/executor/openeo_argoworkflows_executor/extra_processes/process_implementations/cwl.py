@@ -359,8 +359,11 @@ def run_udf(
 
     inputs = dict(context or {})
     if isinstance(data, str) and data.startswith("/"):
-        inputs.setdefault("openeo_data", data)
-        logger.info(f"Injecting staged data path into CWL inputs as openeo_data: {data}")
+        # Pass as CWL File object so Calrissian stages it into the tool pod's
+        # working directory. A plain string path won't work because CWL tool
+        # containers only have the working-dir PVC mount, not /user_workspaces.
+        inputs.setdefault("openeo_data", {"class": "File", "location": f"file://{data}"})
+        logger.info(f"Injecting staged data as CWL File input (openeo_data): {data}")
 
     return run_cwl(
         cwl=udf,
