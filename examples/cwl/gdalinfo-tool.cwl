@@ -13,7 +13,7 @@ doc: |
 
 requirements:
   DockerRequirement:
-    dockerPull: "osgeo/gdal:ubuntu-full-latest"
+    dockerPull: "ghcr.io/osgeo/gdal:ubuntu-full-latest"
   InitialWorkDirRequirement:
     listing:
       - entryname: run.py
