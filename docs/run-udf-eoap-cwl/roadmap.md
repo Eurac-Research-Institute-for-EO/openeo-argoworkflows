@@ -7,20 +7,9 @@
 | 1. Research & Alignment | — | VITO/EOEPCA standard, runtime=EOAP-CWL, parameter mapping |
 | 2. API Changes | #91 | `/udf_runtimes` + `run_udf` in `/processes` |
 | 3. Executor Changes | #91 | `_is_cwl_job()` + `run_udf()` shim in `cwl.py` |
+| 4. STAC Output Passthrough | eurac-main | Detect CWL-produced STAC, copy to `STAC/`, move items to `items/`, rewrite hrefs |
 
 ## Remaining
-
-### Phase 4 — STAC Output Passthrough (issue #93)
-
-**Problem**: When a CWL workflow produces its own STAC (`catalog.json` / `collection.json`),
-the executor currently ignores it and generates a flat STAC via `stac_cwl.py` instead.
-
-**Fix**: In `_collect_calrissian_outputs()` (`cwl.py`):
-1. After Calrissian runs, check if `catalog.json`, `catalogue.json`, or `collection.json` exists in outdir
-2. If yes → copy the STAC tree to `STAC/` as-is (passthrough)
-3. If no → fall back to current `stac_cwl.py` behavior (generate flat STAC from output files)
-
----
 
 ### Phase 5 — Staged Data Flow (issue #93)
 
