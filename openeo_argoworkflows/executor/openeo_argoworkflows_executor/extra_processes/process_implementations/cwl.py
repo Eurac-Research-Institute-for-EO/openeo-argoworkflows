@@ -319,7 +319,7 @@ def run_cwl(
                     with open(item_file, "w") as f:
                         json.dump(item_dict, f, indent=2)
 
-            logger.info(f"CWL produced STAC roo:t ({stac_root.name}) - restructured to {stac_path}")
+            logger.info(f"CWL produced STAC root ({stac_root.name}) - restructured to {stac_path}")
             collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
         else:
             # No STAC root -  flat file copy + generate STAC via stac_cwl.py
