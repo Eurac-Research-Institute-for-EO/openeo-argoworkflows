@@ -275,7 +275,7 @@ def run_cwl(
         # Collect output files to RESULTS/
         stac_root = _find_stac_root(calrissian_outdir)
         if stac_root:
-            job_id = os.environ.get("OPENEO_JOB_ID", "result")
+            job_id = os.environ.get("OPENEO_JOB_ID") or Path(workspace_root).name
             stac_path = Path(workspace_root) / "STAC"
             if stac_path.exists():
                 shutil.rmtree(stac_path)
