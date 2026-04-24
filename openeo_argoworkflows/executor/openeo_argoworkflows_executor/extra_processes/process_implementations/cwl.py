@@ -293,24 +293,22 @@ def run_cwl(
                 if item_file.suffix != ".json":
                     continue
                 with open(item_file) as f:
-                    try:
-                        item_dict = json.load(f)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Could not parse item JSON file: {item_file}")
-                        continue
-                    changed = False
-                    for asset_val in item_dict.get("assets", {}).values():
-                        href = asset_val.get("href", "")
-                        if not href.startswith("/"):
-                            abs_path = stac_path / href.lstrip("./")
-                            if abs_path.exists():
-                                asset_val["href"] = str(abs_path)
-                                changed = True
+                   
+                    item_dict = json.load(f)
 
-                    if changed:
-                        with open(item_file, "w") as f:
-                            json.dump(item_dict, f, indent=2)
-                            
+                changed = False
+                for asset_val in item_dict.get("assets", {}).values():
+                    href = asset_val.get("href", "")
+                    if not href.startswith("/"):
+                        abs_path = stac_path / href.lstrip("./")
+                        if abs_path.exists():
+                            asset_val["href"] = str(abs_path)
+                            changed = True
+
+                if changed:
+                    with open(item_file, "w") as f:
+                        json.dump(item_dict, f, indent=2)
+
             logger.info(f"CWL produced STAC roo:t ({stac_root.name}) - restructured to {stac_path}")
             collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
         else:
