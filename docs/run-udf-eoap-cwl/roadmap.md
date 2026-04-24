@@ -8,19 +8,9 @@
 | 2. API Changes | #91 | `/udf_runtimes` + `run_udf` in `/processes` |
 | 3. Executor Changes | #91 | `_is_cwl_job()` + `run_udf()` shim in `cwl.py` |
 | 4. STAC Output Passthrough | eurac-main | Detect CWL-produced STAC, copy to `STAC/`, move items to `items/`, rewrite hrefs |
+| 5. Staged Data Flow | eurac-main | `save_result` returns file path; `gdalinfo-tool.cwl` proves full `load_collection → save_result → run_udf(EOAP-CWL)` pipeline |
 
 ## Remaining
-
-### Phase 5 — Staged Data Flow (issue #93)
-
-**Problem**: `save_result` in `io.py` returns `None` — the file path never reaches `run_udf`.
-
-**Fix**: Add `return str(destination)` at the end of `save_result()` in:
-`openeo_argoworkflows/executor/openeo_argoworkflows_executor/extra_processes/process_implementations/io.py`
-
-See [staged-data-flow.md](staged-data-flow.md) for full details and process graph example.
-
----
 
 ### Phase 6 — Real Geospatial CWL Example (issue #93)
 
