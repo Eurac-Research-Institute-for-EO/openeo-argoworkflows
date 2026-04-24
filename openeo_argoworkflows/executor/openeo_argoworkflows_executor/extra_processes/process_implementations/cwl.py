@@ -342,22 +342,28 @@ def run_udf(
     context: Optional[dict] = None,
     **kwargs,
 ):
-    """run_udf handler for EOAP-CWL runtime.   
+    """run_udf handler for EOAP-CWL runtime.
 
     Maps run_udf parameters to run_cwl:
       udf     -> cwl  (the CWL document or URL)
       context -> inputs (CWL input key-value pairs)
 
-    The `data` parameter is ignored — CWL workflows receive
-    pre-staged inputs via `context`, not a datacube.
+    If `data` is a file path string (returned by save_result), it is
+    injected into CWL inputs as `openeo_data` so CWL tools can reference
+    the staged file without needing an unresolvable from_node in context.
     """
     if runtime.lower() != "eoap-cwl":
         raise RuntimeError(
             f"Unsupported runtime '{runtime}'. This backend only supports 'EOAP-CWL'."
         )
 
+    inputs = dict(context or {})
+    if isinstance(data, str) and data.startswith("/"):
+        inputs.setdefault("openeo_data", data)
+        logger.info(f"Injecting staged data path into CWL inputs as openeo_data: {data}")
+
     return run_cwl(
         cwl=udf,
-        inputs=context or {},
+        inputs=inputs,
         **kwargs,
     )

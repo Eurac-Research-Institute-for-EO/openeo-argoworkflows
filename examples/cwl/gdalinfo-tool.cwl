@@ -8,8 +8,9 @@ doc: |
   Used to validate Phase 5 staged data flow:
     load_collection → save_result → run_udf(EOAP-CWL, gdalinfo-tool.cwl)
 
-  The `input_path` argument is the absolute path to the raster file on the
-  shared PVC (returned by save_result in the openEO process graph).
+  The `openeo_data` input is the absolute path to the raster file on the
+  shared PVC — injected automatically from the `data` argument of run_udf
+  (i.e. the return value of save_result). No context wiring needed.
 
 requirements:
   DockerRequirement:
@@ -23,7 +24,7 @@ requirements:
           import sys
           from datetime import datetime, timezone
 
-          input_path = sys.argv[1]
+          input_path = sys.argv[1]  # openeo_data — injected by run_udf from save_result
           now = datetime.now(timezone.utc).isoformat()
 
           # Run gdalinfo
@@ -80,7 +81,7 @@ requirements:
 baseCommand: ["python3", "run.py"]
 
 inputs:
-  input_path:
+  openeo_data:
     type: string
     inputBinding:
       position: 1
