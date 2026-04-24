@@ -45,17 +45,23 @@ requirements:
               json.dump(item, f, indent=2)
 
           # Write STAC catalog root
-          catalog = {
-              "type": "Catalog",
+          collection = {
+              "type": "Collection",
               "id": "stac-output-test",
               "stac_version": "1.0.0",
               "description": "CWL STAC passthrough test",
+              "license": "proprietary",
+              "extent": {
+                  "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                  "temporal": {"interval": [[now, None]]}
+              },
               "links": [
                   {"rel": "item", "href": "./item.json", "type": "application/geo+json"}
               ]
           }
           with open("catalog.json", "w") as f:
-              json.dump(catalog, f, indent=2)
+              json.dump(collection, f, indent=2)
+
 
           print(f"Written output.txt, item.json, catalog.json")
 
