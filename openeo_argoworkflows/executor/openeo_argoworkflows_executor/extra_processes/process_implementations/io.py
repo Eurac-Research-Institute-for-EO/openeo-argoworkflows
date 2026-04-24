@@ -428,3 +428,4 @@ def save_result(
         logger.info("Wrote spatial_ref as dimensionless CF grid_mapping variable")
 
     logger.info(f"Successfully saved result to: {destination}")
+    return str(destination)
