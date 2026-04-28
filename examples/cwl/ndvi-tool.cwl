@@ -7,7 +7,8 @@ doc: |
 
   NDVI = (B08 - B04) / (B08 + B04)
 
-  Output: ndvi.nc (Float32, values -1 to 1) + STAC Collection + Item.
+  Uses GDAL Python bindings only — no pip install at runtime.
+  Output: ndvi.tif (Float32, values -1 to 1) + STAC Collection + Item.
 
   Process graph pattern:
     load_collection(bands=["B04","B08"]) → save_result → run_udf(EOAP-CWL)
@@ -20,91 +21,121 @@ requirements:
       - entryname: run.py
         entry: |
           import json
-          import subprocess
           import sys
+          import traceback
           from datetime import datetime, timezone
 
-          subprocess.run(
-              [sys.executable, "-m", "pip", "install", "-q", "xarray", "netcdf4", "rasterio"],
-              check=True
-          )
-
           import numpy as np
-          import xarray as xr
+          from osgeo import gdal
 
-          input_path = sys.argv[1]
-          now = datetime.now(timezone.utc).isoformat()
+          gdal.UseExceptions()
 
-          print(f"Opening: {input_path}")
-          ds = xr.open_dataset(input_path, engine="netcdf4")
-          print(f"Variables: {list(ds.data_vars)}")
-          print(f"Dims: {dict(ds.dims)}")
+          def main():
+              input_path = sys.argv[1]
+              now = datetime.now(timezone.utc).isoformat()
 
-          if "B04" not in ds or "B08" not in ds:
-              raise ValueError(f"Expected B04 and B08 in dataset, got: {list(ds.data_vars)}")
+              # Discover subdatasets to find B04 and B08 variables
+              ds = gdal.Open(input_path)
+              subdatasets = ds.GetSubDatasets()
+              print(f"Subdatasets in {input_path}:")
+              for s in subdatasets:
+                  print(f"  {s}")
 
-          b04 = ds["B04"].astype("float32")
-          b08 = ds["B08"].astype("float32")
+              if not subdatasets:
+                  # Single-variable file — try opening directly
+                  subdatasets = [(input_path, "")]
 
-          ndvi = (b08 - b04) / (b08 + b04)
-          ndvi = ndvi.clip(-1, 1)
-          ndvi.name = "NDVI"
-          ndvi.attrs["long_name"] = "Normalized Difference Vegetation Index"
-          ndvi.attrs["valid_range"] = [-1.0, 1.0]
-          ndvi.attrs["units"] = "1"
+              def find_sub(name):
+                  matches = [s[0] for s in subdatasets if name in s[0] or name in s[1]]
+                  if not matches:
+                      raise ValueError(
+                          f"Band '{name}' not found. Available: {[s[0] for s in subdatasets]}"
+                      )
+                  return matches[0]
 
-          out_ds = ndvi.to_dataset(name="NDVI")
+              b04_path = find_sub("B04")
+              b08_path = find_sub("B08")
+              print(f"B04: {b04_path}")
+              print(f"B08: {b08_path}")
 
-          # Carry over spatial coords and CRS if present
-          for coord in ["spatial_ref", "crs"]:
-              if coord in ds:
-                  out_ds[coord] = ds[coord]
+              b04_ds = gdal.Open(b04_path)
+              b08_ds = gdal.Open(b08_path)
 
-          out_ds.to_netcdf("ndvi.nc")
-          print("Written ndvi.nc")
+              b04 = b04_ds.GetRasterBand(1).ReadAsArray().astype(np.float32)
+              b08 = b08_ds.GetRasterBand(1).ReadAsArray().astype(np.float32)
+              print(f"B04 shape: {b04.shape}, B08 shape: {b08.shape}")
 
-          # STAC item
-          item = {
-              "type": "Feature",
-              "stac_version": "1.0.0",
-              "id": "ndvi-output",
-              "geometry": None,
-              "bbox": None,
-              "properties": {"datetime": now},
-              "links": [],
-              "assets": {
-                  "ndvi.nc": {
-                      "href": "./ndvi.nc",
-                      "type": "application/x-netcdf",
-                      "roles": ["data"],
-                      "title": "NDVI NetCDF"
-                  }
-              },
-              "collection": "ndvi-result"
-          }
-          with open("item.json", "w") as f:
-              json.dump(item, f, indent=2)
+              # Compute NDVI
+              denom = b08 + b04
+              ndvi = np.where(denom != 0, (b08 - b04) / denom, 0).astype(np.float32)
+              ndvi = np.clip(ndvi, -1, 1)
+              print(f"NDVI min={ndvi.min():.4f} max={ndvi.max():.4f} mean={ndvi.mean():.4f}")
 
-          # STAC collection
-          collection = {
-              "type": "Collection",
-              "id": "ndvi-result",
-              "stac_version": "1.0.0",
-              "description": "NDVI computed from Sentinel-2 B04 and B08 via openEO CWL job",
-              "license": "proprietary",
-              "extent": {
-                  "spatial": {"bbox": [[-180, -90, 180, 90]]},
-                  "temporal": {"interval": [[now, None]]}
-              },
-              "links": [
-                  {"rel": "item", "href": "./item.json", "type": "application/geo+json"}
-              ]
-          }
-          with open("catalog.json", "w") as f:
-              json.dump(collection, f, indent=2)
+              # Write output GeoTIFF
+              driver = gdal.GetDriverByName("GTiff")
+              rows, cols = ndvi.shape
+              out_ds = driver.Create("ndvi.tif", cols, rows, 1, gdal.GDT_Float32)
+              out_ds.SetGeoTransform(b04_ds.GetGeoTransform())
+              out_ds.SetProjection(b04_ds.GetProjection())
+              band = out_ds.GetRasterBand(1)
+              band.WriteArray(ndvi)
+              band.SetNoDataValue(-9999)
+              band.SetDescription("NDVI")
+              out_ds.FlushCache()
+              out_ds = None
+              print("Written ndvi.tif")
 
-          print("Written item.json, catalog.json")
-          ds.close()
+              # STAC item
+              item = {
+                  "type": "Feature",
+                  "stac_version": "1.0.0",
+                  "id": "ndvi-output",
+                  "geometry": None,
+                  "bbox": None,
+                  "properties": {"datetime": now},
+                  "links": [],
+                  "assets": {
+                      "ndvi.tif": {
+                          "href": "./ndvi.tif",
+                          "type": "image/tiff; application=geotiff",
+                          "roles": ["data"],
+                          "title": "NDVI GeoTIFF"
+                      }
+                  },
+                  "collection": "ndvi-result"
+              }
+              with open("item.json", "w") as f:
+                  json.dump(item, f, indent=2)
+
+              # STAC collection
+              collection = {
+                  "type": "Collection",
+                  "id": "ndvi-result",
+                  "stac_version": "1.0.0",
+                  "description": "NDVI computed from Sentinel-2 B04 and B08 via openEO CWL job",
+                  "license": "proprietary",
+                  "extent": {
+                      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                      "temporal": {"interval": [[now, None]]}
+                  },
+                  "links": [
+                      {"rel": "item", "href": "./item.json", "type": "application/geo+json"}
+                  ]
+              }
+              with open("catalog.json", "w") as f:
+                  json.dump(collection, f, indent=2)
+
+              print("Written item.json, catalog.json")
+
+          try:
+              main()
+          except Exception as e:
+              print(f"ERROR: {e}", file=sys.stderr)
+              traceback.print_exc()
+              # Write error report so it shows up as a downloadable asset
+              with open("error.txt", "w") as f:
+                  f.write(traceback.format_exc())
+              sys.exit(1)
 
 baseCommand: ["python3", "run.py"]
 
@@ -118,7 +149,7 @@ outputs:
   ndvi_result:
     type: File
     outputBinding:
-      glob: "ndvi.nc"
+      glob: "ndvi.tif"
   stac_item:
     type: File
     outputBinding:
