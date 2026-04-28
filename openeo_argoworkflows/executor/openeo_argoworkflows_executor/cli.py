@@ -2,6 +2,7 @@ import logging
 
 import click
 import fsspec
+from openeo_argoworkflows_executor.executor import _is_cwl_job
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ def execute(process_graph, user_profile, dask_profile):
         client = dask_cluster.get_client()
 
     parsed_graph = OpenEOProcessGraph(pg_data=openeo_parameters.process_graph)
+    is_cwl = _is_cwl_job(parsed_graph.pg_data)
 
     execute(parsed_graph=parsed_graph)
 
@@ -141,7 +143,7 @@ def execute(process_graph, user_profile, dask_profile):
     result_files = [f for f in all_result_files if f.endswith(".nc")]
     other_files = [f for f in all_result_files if not f.endswith(".nc")]
 
-    if result_files:
+    if result_files and not is_cwl:
         try:
             # Workaround for raster2stac bugs:
             # Bug 1: generate_netcdf_stac() fails with file paths on HDF5-based NetCDF4 files
