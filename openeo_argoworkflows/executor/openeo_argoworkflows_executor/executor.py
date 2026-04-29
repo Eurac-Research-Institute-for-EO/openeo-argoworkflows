@@ -46,6 +46,12 @@ def prepare_graphs(process_graph: OpenEOProcessGraph):
     # We get the total bounding box from the process graph
     _box = get_pg_bounding_box(process_graph.pg_data)
 
+    if _box is None:
+        raise ValueError(
+            "Could not determine spatial_extent from process graph. "
+            "Ensure load_collection or the top-level process has a bbox/spatial_extent argument."
+        )
+
     bbox = [_box.west, _box.south, _box.east, _box.north]
 
     tilesize = 100000
