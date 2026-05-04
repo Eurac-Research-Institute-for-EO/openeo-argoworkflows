@@ -1,208 +1,229 @@
-# run_cwl MVP — Developer Guide
+# CWL Tools for openEO — Developer Guide
 
 ## Overview
 
-The `run_cwl` process executes CWL (Common Workflow Language) workflows
-through the openEO backend. CWL documents are validated with `cwltool`
-and executed via Calrissian on Kubernetes.
+CWL (Common Workflow Language) tools are executed via `run_udf` with `runtime="EOAP-CWL"`.
+Calrissian runs the tool as a Kubernetes pod. The input data file is staged automatically
+from the shared PVC into the tool pod.
 
-## Quick Start
+## Available Example Tools
 
-### 1. Validate locally with cwltool
+| Tool | Description | Input | Output |
+|------|-------------|-------|--------|
+| `gdalinfo-tool.cwl` | Runs `gdalinfo` on the staged file | NetCDF from `save_result` | `gdalinfo.txt` + STAC |
+| `ndvi-tool.cwl` | Computes NDVI from B04/B08 bands | NetCDF with B04+B08 | `ndvi.tif` (Float32) + STAC |
 
-```bash
-# Install cwltool
-pip install cwltool
+## Process Graph Pattern
 
-# Validate the golden-path workflow
-cwltool --validate examples/cwl/echo-tool.cwl
+Every CWL job follows this pattern:
 
-# Run locally (requires Docker)
-cwltool examples/cwl/echo-tool.cwl examples/cwl/echo-inputs.json
+```
+load_collection → save_result → run_udf(EOAP-CWL)
 ```
 
-Expected output: a file `output.txt` containing `Hello from openEO run_cwl MVP`.
+`save_result` serialises the in-memory dataset to a NetCDF on the shared PVC.
+`run_udf` injects it as a staged `File` input named `openeo_data` into the CWL tool.
 
-### 2. Submit via openEO API
-
-```bash
-# Create a job with the run_cwl process graph
-curl -X POST https://<backend>/jobs \
-  -H "Authorization: Bearer oidc/eurac/<token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "process": {
-      "process_graph": {
-        "run1": {
-          "process_id": "run_cwl",
-          "arguments": {
-            "cwl": "https://raw.githubusercontent.com/Eurac-Research-Institute-for-EO/openeo-argoworkflows/main/examples/cwl/echo-tool.cwl",
-            "inputs": {
-              "message": "Hello from openEO"
-            }
-          },
-          "result": true
-        }
-      }
-    }
-  }'
-
-# Start the job
-curl -X POST https://<backend>/jobs/<job-id>/results \
-  -H "Authorization: Bearer oidc/eurac/<token>"
-
-# Check status
-curl https://<backend>/jobs/<job-id> \
-  -H "Authorization: Bearer oidc/eurac/<token>"
-
-# Download results
-curl https://<backend>/jobs/<job-id>/results \
-  -H "Authorization: Bearer oidc/eurac/<token>"
-```
-
-### 3. Submit via Python client
+### Python client example
 
 ```python
 import openeo
 
-conn = openeo.connect("https://<backend>")
+conn = openeo.connect("https://openeo.eurac.edu")
 conn.authenticate_oidc()
 
-job = conn.create_job(
-    process_graph={
-        "run1": {
-            "process_id": "run_cwl",
-            "arguments": {
-                "cwl": "https://raw.githubusercontent.com/Eurac-Research-Institute-for-EO/openeo-argoworkflows/main/examples/cwl/echo-tool.cwl",
-                "inputs": {
-                    "message": "Hello from openEO"
-                }
-            },
-            "result": True
+pg = {
+    "load1": {
+        "process_id": "load_collection",
+        "arguments": {
+            "id": "HYPERECOS_S2_L2A_Sciliar_Catinaccio",
+            "spatial_extent": {"west": 11.5, "south": 46.4, "east": 11.6, "north": 46.5},
+            "temporal_extent": ["2023-06-01", "2023-06-05"],
+            "bands": ["B04", "B08"]
         }
+    },
+    "save1": {
+        "process_id": "save_result",
+        "arguments": {
+            "data": {"from_node": "load1"},
+            "format": "NetCDF"
+        }
+    },
+    "run1": {
+        "process_id": "run_udf",
+        "arguments": {
+            "data": {"from_node": "save1"},
+            "udf": "https://raw.githubusercontent.com/Eurac-Research-Institute-for-EO/openeo-argoworkflows/eurac-main/examples/cwl/ndvi-tool.cwl",
+            "runtime": "EOAP-CWL",
+            "context": {}
+        },
+        "result": True
     }
-)
-job.start()
-job.logs()
+}
+
+job = conn.create_job(pg)
+job.start_and_wait()
 results = job.get_results()
 results.download_files("./output/")
 ```
 
-## Process Graph Format
+## Writing a CWL Tool
 
+### Conventions
+
+| Rule | Detail |
+|------|--------|
+| Input name | Always `openeo_data` — the executor injects the staged file here |
+| Input type | Always `File` — never `string` (the file path isn't visible inside tool pods) |
+| Docker images | Use `ghcr.io/` prefix — Docker Hub rate limits cause `ImagePullBackOff` |
+| STAC output | Produce `catalog.json` (Collection) + `item.json` (Feature) for passthrough |
+| Asset hrefs | Use relative paths (`./file.txt`) — executor rewrites them to absolute |
+
+### Minimal tool template
+
+```yaml
+cwlVersion: v1.2
+class: CommandLineTool
+
+requirements:
+  DockerRequirement:
+    dockerPull: "ghcr.io/your-org/your-image:tag"
+  InitialWorkDirRequirement:
+    listing:
+      - entryname: run.py
+        entry: |
+          import sys
+          input_path = sys.argv[1]   # path to staged file inside the tool pod
+          # ... your processing ...
+
+baseCommand: ["python3", "run.py"]
+
+inputs:
+  openeo_data:
+    type: File
+    inputBinding:
+      position: 1
+
+outputs:
+  result_file:
+    type: File
+    outputBinding:
+      glob: "output.tif"
+  stac_item:
+    type: File
+    outputBinding:
+      glob: "item.json"
+  stac_catalog:
+    type: File
+    outputBinding:
+      glob: "catalog.json"
+```
+
+### STAC output format
+
+For results to be downloadable via `job.get_results()`, the tool must produce:
+
+**`catalog.json`** — STAC Collection:
 ```json
 {
-  "run1": {
-    "process_id": "run_cwl",
-    "arguments": {
-      "cwl": "<inline CWL string or URL>",
-      "inputs": {
-        "<cwl_input_name>": "<value>"
-      },
-      "options": {
-        "validate_only": false,
-        "max_ram": "8G",
-        "max_cores": 4
-      }
-    },
-    "result": true
+  "type": "Collection",
+  "id": "my-result",
+  "stac_version": "1.0.0",
+  "description": "...",
+  "license": "proprietary",
+  "extent": {
+    "spatial": {"bbox": [[-180, -90, 180, 90]]},
+    "temporal": {"interval": [["2023-06-01T00:00:00Z", null]]}
+  },
+  "links": [{"rel": "item", "href": "./item.json", "type": "application/geo+json"}]
+}
+```
+
+**`item.json`** — STAC Item:
+```json
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "my-result-item",
+  "geometry": null,
+  "bbox": null,
+  "properties": {"datetime": "2023-06-01T00:00:00Z"},
+  "links": [],
+  "assets": {
+    "output.tif": {
+      "href": "./output.tif",
+      "type": "image/tiff; application=geotiff",
+      "roles": ["data"]
+    }
   }
 }
 ```
 
-### Parameters
+## Chaining CWL Tools
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `cwl` | string | yes | Inline CWL document (YAML/JSON) or URL to a `.cwl` file |
-| `inputs` | object | yes | Key-value mapping of CWL input parameter names to values |
-| `options` | object | no | Execution options (see below) |
+To run two CWL tools in sequence (second tool receives first tool's output):
 
-### Options
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `validate_only` | boolean | `false` | Validate CWL without executing |
-| `max_ram` | string | `"8G"` | Max RAM for Calrissian (e.g. `"16G"`) |
-| `max_cores` | integer | `4` | Max CPU cores for Calrissian |
-
-## Architecture
-
+```python
+"run2": {
+    "process_id": "run_udf",
+    "arguments": {
+        "data": {"from_node": "save1"},      # first tool reads the NetCDF
+        "udf": "https://.../ndvi-tool.cwl",
+        "runtime": "EOAP-CWL",
+        "context": {}
+    }
+},
+"run1": {
+    "process_id": "run_udf",
+    "arguments": {
+        "data": {"from_node": "run2"},       # second tool reads ndvi.tif
+        "udf": "https://.../gdalinfo-tool.cwl",
+        "runtime": "EOAP-CWL",
+        "context": {}
+    },
+    "result": True
+}
 ```
-User submits openEO job with run_cwl process
-    │
-    ▼
-API creates job → PostgreSQL → Redis queue
-    │
-    ▼
-Executor pod starts (Argo Workflow)
-    │
-    ├─ Detects run_cwl → skips Dask cluster setup
-    │
-    ▼
-Resolves CWL (download URL or write inline)
-    │
-    ▼
-Validates with cwltool --validate
-    │
-    ▼
-Invokes Calrissian subprocess
-    │   └─ Calrissian creates K8s pods for each CWL step
-    │
-    ▼
-Collects outputs → copies to workspace RESULTS/
-    │
-    ▼
-Generates STAC collection + items
-    │
-    ▼
-Job status → finished
-```
+
+> **Note:** openEO only supports one `result: true` node per job. Two independent
+> CWL tools that should both produce downloadable output require two separate jobs.
 
 ## Debugging
 
-### Check executor logs
+### Stream logs during a job
 
 ```bash
-# Find the Argo workflow pod
-kubectl get pods -n openeo -l OPENEO_JOB_ID=<job-id>
+# Find the executor pod
+kubectl get pods -n openeo --sort-by=.metadata.creationTimestamp | tail -10
 
-# Check executor logs
-kubectl logs -n openeo <pod-name> -c main
+# Stream logs (Calrissian output is captured here)
+kubectl logs -n openeo <pod-name> -c openeo-argo -f
+```
 
-# Look for CWL-specific log lines:
-# "CWL job detected — skipping Dask cluster setup"
-# "Running Calrissian: ..."
-# "Calrissian stderr: ..."
-# "Collected N output files to ..."
+### Read logs after job completes
+
+```bash
+# Via kubectl (pods kept for 7 days)
+kubectl logs -n openeo <pod-name> -c openeo-argo
+
+# Via Python client
+conn.job("<job-id>").logs()
+```
+
+### Inspect CWL work directory
+
+Even after the tool pod is gone, staged files remain on the PVC:
+
+```bash
+ls /user_workspaces/<user_id>/<job_id>/_cwl_work/
 ```
 
 ### Common errors
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `CWL validation failed` | Invalid CWL document | Validate locally first: `cwltool --validate your.cwl` |
-| `CWL execution failed (exit code 1)` | Calrissian step pod failed | Check Calrissian stderr in executor logs |
-| `Failed to resolve CWL document` | URL unreachable or invalid inline CWL | Verify URL is accessible from the cluster |
-| `CWL execution timed out` | Workflow exceeds 1-hour timeout | Simplify workflow or split into smaller steps |
-
-## Infrastructure Requirements
-
-For cluster execution, the following must be configured:
-
-1. **Executor image**: Must include `calrissian` and `cwltool` packages
-2. **RBAC**: Executor service account needs pod create/delete/watch permissions
-   (Calrissian creates pods for each CWL step)
-3. **Storage**: RWX PVC for Calrissian working directories
-
-## Known Limitations (MVP)
-
-- **CWL v1.0–1.2 only**: Only `CommandLineTool` and simple single-step `Workflow` are tested
-- **No ScatterFeatureRequirement**: Parallel scatter is not supported
-- **No SubworkflowFeatureRequirement**: Nested workflows are not tested
-- **No private registries**: Docker images must be publicly accessible
-- **No secrets**: CWL steps cannot access Kubernetes secrets
-- **1-hour timeout**: Long-running workflows will be terminated
-- **File outputs only**: CWL outputs must be `File` type (not `Directory`)
-- **No CWL → openEO data cube bridging**: CWL outputs are raw files, not xarray cubes
-- **STAC for non-NetCDF is minimal**: Only file metadata (no spatial/temporal extent)
+| `ImagePullBackOff` | Docker Hub rate limit | Switch image to `ghcr.io/` prefix |
+| `Did not find output file with glob pattern` | Tool script failed before writing output | Check logs for Python/script errors |
+| `Band 'B04' not found` | Wrong bands loaded in `load_collection` | Ensure `bands=["B04","B08"]` in process graph |
+| Tool receives wrong path | Used `string` input type instead of `File` | Always use `type: File` for `openeo_data` |
+| Only one tool's output visible | Dead branch in process graph | Chain tools with `from_node`, not parallel branches |
