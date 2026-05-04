@@ -52,7 +52,7 @@ app = FastAPI()
 
 app.router.add_api_route(
     name="file_headers",
-    path=f"/{client.settings.OPENEO_VERSION}/files" + "/{path:path}",
+    path=f"/openeo/{client.settings.OPENEO_VERSION}/files" + "/{path:path}",
     response_model=None,
     response_model_exclude_unset=False,
     response_model_exclude_none=True,
