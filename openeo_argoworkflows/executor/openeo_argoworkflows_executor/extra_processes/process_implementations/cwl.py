@@ -406,6 +406,10 @@ def run_udf(
         # containers only have the working-dir PVC mount, not /user_workspaces.
         inputs.setdefault("openeo_data", {"class": "File", "location": f"file://{data}"})
         logger.info(f"Injecting staged data as CWL File input (openeo_data): {data}")
+    elif data is not None:
+        # Standalone CWL tool — data may be an xarray object from a preceding
+        # process or a non-path string. Ignore it; use context for CWL inputs.
+        logger.info(f"Ignoring non-path data argument (type={type(data).__name__}); using context inputs only")
 
     return run_cwl(
         cwl=udf,
