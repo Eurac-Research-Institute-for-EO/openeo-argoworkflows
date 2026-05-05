@@ -25,6 +25,37 @@ def _is_url(value: str) -> bool:
     return parsed.scheme in ("http", "https")
 
 
+def _is_graph_cwl(cwl_path: Path) -> bool:
+    """Return True if the CWL file is a $graph multi-tool package.
+
+    A $graph document bundles multiple tools; Calrissian needs the '#main'
+    entry point suffix to identify which tool to run.
+    """
+    try:
+        text = cwl_path.read_text()
+        if not text.strip():
+            return False
+        # Fast string check first — avoids full parse on plain tools
+        if "$graph" not in text:
+            return False
+        # Confirm it's a top-level key (works for both JSON and YAML)
+        import yaml
+        doc = yaml.safe_load(text)
+        return isinstance(doc, dict) and "$graph" in doc
+    except Exception:
+        return False
+
+
+def _resolve_cwl_arg(cwl_path: Path) -> str:
+    """Return the Calrissian CWL argument for the given file.
+
+    Appends '#main' for $graph packages so Calrissian knows the entry point.
+    """
+    if _is_graph_cwl(cwl_path):
+        return str(cwl_path) + "#main"
+    return str(cwl_path)
+
+
 def _resolve_cwl(cwl: str, work_dir: Path) -> Path:
     """Resolve a CWL argument to a local file path.
 
@@ -242,7 +273,7 @@ def run_cwl(
             str(work_dir / "cwl-stdout.json"),
             "--stderr",
             str(work_dir / "cwl-stderr.log"),
-            str(cwl_path),
+            _resolve_cwl_arg(cwl_path),
             str(inputs_path),
         ]
 
