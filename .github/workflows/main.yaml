@@ -39,11 +39,11 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           subFolder: openeo_argoworkflows/api
-          # Change this to be your CI task/script
+          push: never
           runCmd: |
             poetry config virtualenvs.in-project true
             poetry install --with dev --all-extras
-            poetry run pytest 
+            poetry run pytest
 
   tests_executor:
     runs-on: ubuntu-latest
@@ -58,16 +58,16 @@ jobs:
         with:
           filters: |
             executor:
-              - 'openeo_argoworkflows/executor/**'  
+              - 'openeo_argoworkflows/executor/**'
 
       - name: Build and run dev container task
         if: ${{ steps.changes.outputs.executor == 'true' }}
         uses: devcontainers/ci@v0.3
         with:
           subFolder: openeo_argoworkflows/executor
-          # Change this to be your CI task/script
+          push: never
           runCmd: |
             git config --global url."https://github.com/".insteadOf "git@github.com:"
             poetry config virtualenvs.in-project true
             poetry install --with dev
-            poetry run pytest 
+            poetry run pytest
