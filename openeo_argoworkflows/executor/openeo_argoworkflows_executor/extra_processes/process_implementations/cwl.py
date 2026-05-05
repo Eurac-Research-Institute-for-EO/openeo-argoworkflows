@@ -14,8 +14,9 @@ __all__ = ["run_cwl", "run_udf"]
 logger = logging.getLogger(__name__)
 
 # Default resource limits for Calrissian
-DEFAULT_MAX_RAM = "8G"
-DEFAULT_MAX_CORES = 4
+# 16G covers sar_slc_preprocessing (ramMin: 13000) and coherence/interferogram (7G/pair)
+DEFAULT_MAX_RAM = "16G"
+DEFAULT_MAX_CORES = 8
 
 
 def _is_url(value: str) -> bool:
