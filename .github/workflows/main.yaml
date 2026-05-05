@@ -6,6 +6,7 @@ on:
       - 'docs/**'
     branches:
       - main
+      - eurac-main
   pull_request:
     paths-ignore:
       - 'docs/**'
