@@ -340,8 +340,10 @@ def run_cwl(
                 shutil.rmtree(stac_path)
                 
             shutil.copytree(str(calrissian_outdir), str(stac_path))
-            # Rename root to {job_id}.json as expected by the API
-            copied_root = stac_path / stac_root.name
+            # Rename root to {job_id}.json as expected by the API.
+            # stac_root may be in a subdirectory (Directory-type CWL output),
+            # so resolve its path relative to calrissian_outdir first.
+            copied_root = stac_path / stac_root.relative_to(calrissian_outdir)
             if copied_root.exists() and copied_root.name != f"{job_id}.json":
                 copied_root.rename(stac_path / f"{job_id}.json")
 
