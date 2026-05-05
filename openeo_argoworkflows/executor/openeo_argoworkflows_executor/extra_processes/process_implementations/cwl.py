@@ -339,11 +339,12 @@ def run_cwl(
             if stac_path.exists():
                 shutil.rmtree(stac_path)
                 
-            shutil.copytree(str(calrissian_outdir), str(stac_path))
-            # Rename root to {job_id}.json as expected by the API.
-            # stac_root may be in a subdirectory (Directory-type CWL output),
-            # so resolve its path relative to calrissian_outdir first.
-            copied_root = stac_path / stac_root.relative_to(calrissian_outdir)
+            # Copy from stac_root.parent so the STAC root and all item files
+            # land directly at STAC/ — works for both flat outputs (parent ==
+            # calrissian_outdir) and Directory-type outputs (parent is a subdir).
+            # This keeps item href links valid without rewriting them.
+            shutil.copytree(str(stac_root.parent), str(stac_path))
+            copied_root = stac_path / stac_root.name
             if copied_root.exists() and copied_root.name != f"{job_id}.json":
                 copied_root.rename(stac_path / f"{job_id}.json")
 

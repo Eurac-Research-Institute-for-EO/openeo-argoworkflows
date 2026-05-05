@@ -58,9 +58,9 @@ class TestStacRootRename:
         stac_path = workspace / "STAC"
         if stac_path.exists():
             shutil.rmtree(stac_path)
-        shutil.copytree(str(calrissian_outdir), str(stac_path))
+        shutil.copytree(str(stac_root.parent), str(stac_path))
 
-        copied_root = stac_path / stac_root.relative_to(calrissian_outdir)
+        copied_root = stac_path / stac_root.name
         if copied_root.exists() and copied_root.name != f"{job_id}.json":
             copied_root.rename(stac_path / f"{job_id}.json")
 
@@ -92,8 +92,9 @@ class TestStacRootRename:
             assert (stac_path / "job-xyz-456.json").exists(), \
                 "collection.json from subdirectory must be renamed to {job_id}.json at STAC root"
 
-    def test_directory_output_tif_files_preserved(self):
-        """GeoTIFF files inside the subdirectory must be preserved after rename."""
+    def test_directory_output_tif_files_at_stac_root(self):
+        """GeoTIFF files from subdir must land directly at STAC/ root, not in a subdir.
+        This ensures item relative hrefs (./result.tif) resolve correctly."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             outdir = _make_calrissian_outdir_directory(base)
@@ -102,5 +103,18 @@ class TestStacRootRename:
 
             stac_path = self._run_stac_copy(outdir, workspace, "job-xyz-456")
 
-            tifs = list(stac_path.rglob("*.tif"))
-            assert len(tifs) == 1
+            tifs = list(stac_path.glob("*.tif"))  # top-level only, not rglob
+            assert len(tifs) == 1, "TIF must be at STAC root, not inside a subdirectory"
+
+    def test_directory_output_no_nested_subdir(self):
+        """After copy, STAC/ must not contain the intermediate subdirectory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outdir = _make_calrissian_outdir_directory(base)
+            workspace = base / "workspace"
+            workspace.mkdir()
+
+            stac_path = self._run_stac_copy(outdir, workspace, "job-xyz-456")
+
+            subdirs = [p for p in stac_path.iterdir() if p.is_dir()]
+            assert subdirs == [], f"No subdirs expected at STAC root, found: {subdirs}"
