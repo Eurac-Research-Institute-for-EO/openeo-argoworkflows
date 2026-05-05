@@ -75,11 +75,21 @@ def _validate_cwl(cwl_path: Path) -> dict:
     return {"valid": False, "errors": errors}
 
 def _find_stac_root(directory: Path) -> Optional[Path]:
-    """Search for a STAC root file in the calrissian output directory."""
-    for name in ("catalog.json", "catalogue.json","collection.json"):
+    """Search for a STAC root file in the calrissian output directory.
+
+    Checks the top level first, then one level into subdirectories to handle
+    CWL Directory-type outputs (e.g. s1-workflows tools output Directory).
+    """
+    for name in ("catalog.json", "catalogue.json", "collection.json"):
         candidate = directory / name
         if candidate.exists():
             return candidate
+    for subdir in sorted(directory.iterdir()):
+        if subdir.is_dir():
+            for name in ("catalog.json", "catalogue.json", "collection.json"):
+                candidate = subdir / name
+                if candidate.exists():
+                    return candidate
     return None
 
 def _collect_calrissian_outputs(calrissian_outdir: Path, results_path: Path) -> list:
