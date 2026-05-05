@@ -256,6 +256,22 @@ def run_cwl(
         # This works because we call Calrissian in-process below.
         _patch_calrissian_container_lookup()
 
+        # Write CDSE S3 credentials to a pod-env-vars file so Calrissian
+        # injects them into each CWL tool pod. Variables are read from the
+        # executor pod's own environment (mounted from the cdse-s3-credentials
+        # K8s Secret via the Helm chart).
+        _CDSE_ENV_VARS = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ENDPOINT_URL_S3")
+        pod_env_args = []
+        if all(k in os.environ for k in _CDSE_ENV_VARS):
+            pod_env = {k: os.environ[k] for k in _CDSE_ENV_VARS}
+            pod_env_path = work_dir / "pod-env-vars.json"
+            pod_env_path.write_text(json.dumps(pod_env))
+            pod_env_args = ["--pod-env-vars", str(pod_env_path)]
+            logger.info(f"Forwarding CDSE env vars to Calrissian tool pods: {list(pod_env.keys())}")
+        else:
+            missing = [k for k in _CDSE_ENV_VARS if k not in os.environ]
+            logger.warning(f"CDSE S3 credentials incomplete (missing: {missing}) — tool pods may fail to access CDSE data")
+
         # Build Calrissian CLI args. We call calrissian.main.main()
         # in-process (not subprocess) so the monkey-patch above takes
         # effect. Calrissian uses argparse on sys.argv.
@@ -273,6 +289,7 @@ def run_cwl(
             str(work_dir / "cwl-stdout.json"),
             "--stderr",
             str(work_dir / "cwl-stderr.log"),
+            *pod_env_args,
             _resolve_cwl_arg(cwl_path),
             str(inputs_path),
         ]

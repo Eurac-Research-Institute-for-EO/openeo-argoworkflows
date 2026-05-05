@@ -1,7 +1,7 @@
 import json
 
 from hera.workflows import Steps, Workflow, WorkflowsService, Step, Env
-from hera.workflows.models import Template, Container, Metadata, PersistentVolumeClaimVolumeSource, Volume, VolumeMount
+from hera.workflows.models import Template, Container, EnvVar, EnvVarSource, Metadata, PersistentVolumeClaimVolumeSource, SecretKeySelector, Volume, VolumeMount
 
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 
@@ -38,7 +38,25 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                     name="executor",
                     container=Container(
                         env=[
-                            Env(name="STAC_API_URL", value=str(settings.STAC_API_URL))
+                            Env(name="STAC_API_URL", value=str(settings.STAC_API_URL)),
+                            EnvVar(
+                                name="AWS_ACCESS_KEY_ID",
+                                value_from=EnvVarSource(
+                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_ACCESS_KEY_ID")
+                                ),
+                            ),
+                            EnvVar(
+                                name="AWS_SECRET_ACCESS_KEY",
+                                value_from=EnvVarSource(
+                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_SECRET_ACCESS_KEY")
+                                ),
+                            ),
+                            EnvVar(
+                                name="AWS_ENDPOINT_URL_S3",
+                                value_from=EnvVarSource(
+                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_ENDPOINT_URL_S3")
+                                ),
+                            ),
                         ],
                         image=settings.OPENEO_EXECUTOR_IMAGE,
                         command=["openeo_executor"],
