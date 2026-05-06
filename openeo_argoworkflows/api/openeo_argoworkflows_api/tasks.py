@@ -10,6 +10,28 @@ from openeo_argoworkflows_api.psql.models import ArgoJob
 from openeo_argoworkflows_api.workflows import executor_workflow
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 
+
+def _resolve_udps(process_graph: dict, user_id) -> dict:
+    import openeo_processes_dask_slim.specs
+    from openeo_pg_parser_networkx import Process as pgProcess, ProcessRegistry
+    from openeo_pg_parser_networkx.resolving_utils import resolve_process_graph
+    from openeo_fastapi.client.processes import UserDefinedProcessGraph
+
+    process_registry = ProcessRegistry()
+    for pid in openeo_processes_dask_slim.specs.__all__:
+        process_registry[("predefined", pid)] = pgProcess(getattr(openeo_processes_dask_slim.specs, pid))
+
+    def get_udp_spec(process_id: str, namespace: str) -> dict:
+        udp = get(get_model=UserDefinedProcessGraph, primary_key=[process_id, namespace])
+        return udp.dict()
+
+    return resolve_process_graph(
+        process_graph=process_graph,
+        process_registry=process_registry,
+        get_udp_spec=get_udp_spec,
+        namespace=str(user_id),
+    )
+
 settings = ExtendedAppSettings()
 q = Queue(
     connection=Redis(
@@ -72,7 +94,8 @@ def submit_job(job: ArgoJob):
         "OPENEO_USER_ID": str(job.user_id),
         "OPENEO_USER_WORKSPACE": str(settings.OPENEO_WORKSPACE_ROOT / str(job.user_id) / str(job.job_id))
     }
-    workflow = executor_workflow(argo, job.process.process_graph, dask_profile, user_profile)
+    process_graph = _resolve_udps(job.process.process_graph, job.user_id)
+    workflow = executor_workflow(argo, process_graph, dask_profile, user_profile)
 
     response = workflow.create()
 
