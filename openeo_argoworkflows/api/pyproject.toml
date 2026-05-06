@@ -13,6 +13,8 @@ hera = "^5.15.1"
 python-multipart = "^0.0.16"
 redis = "5.0.4"
 rq = "1.16.2"
+openeo-processes-dask-slim = "*"
+openeo-pg-parser-networkx = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
