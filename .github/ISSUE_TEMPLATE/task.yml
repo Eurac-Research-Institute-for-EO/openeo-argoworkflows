@@ -1,0 +1,41 @@
+name: Task
+description: A small, concrete unit of work under a feature or PBI.
+labels: ["task"]
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Parent feature / PBI
+      placeholder: "e.g. #110"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What needs to be done
+      description: Be specific — file paths, function names, config keys, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Concrete, verifiable completion criteria.
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — critical / blocking
+        - P1 — high
+        - P2 — medium
+        - P3 — low / nice-to-have
+    validations:
+      required: false

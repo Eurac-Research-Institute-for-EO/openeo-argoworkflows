@@ -1,0 +1,67 @@
+name: Epic
+description: A large body of work made up of multiple features or PBIs.
+labels: ["epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for high-level goals that span multiple issues.
+        Once child issues are created, replace the checkboxes below with `- [ ] #<issue-number>` links so GitHub tracks progress automatically.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What is this epic trying to achieve? One or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / background
+      description: Why is this work needed? Link to relevant discussions, user reports, or upstream issues.
+    validations:
+      required: true
+
+  - type: textarea
+    id: child-issues
+    attributes:
+      label: Child issues
+      description: List the PBIs / features that make up this epic. Replace with `- [ ] #N` links as issues are created.
+      value: |
+        - [ ] <!-- #N: short description -->
+        - [ ] <!-- #N: short description -->
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this epic is done?
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — critical / blocking
+        - P1 — high
+        - P2 — medium
+        - P3 — low / nice-to-have
+    validations:
+      required: true
+
+  - type: input
+    id: milestone
+    attributes:
+      label: Target milestone / sprint
+      placeholder: e.g. Q3 2026, Sprint 12
+    validations:
+      required: false

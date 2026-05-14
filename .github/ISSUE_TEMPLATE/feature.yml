@@ -1,0 +1,67 @@
+name: Feature / PBI
+description: A deliverable unit of work under an epic.
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for a feature or product backlog item (PBI) that sits under an epic.
+        Link the parent epic in the field below and break implementation into tasks if needed.
+
+  - type: input
+    id: parent-epic
+    attributes:
+      label: Parent epic
+      placeholder: "e.g. #109"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be built or changed, and why?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: How will this be tested? Unit tests, integration tests, manual steps?
+      value: |
+        - [ ]
+    validations:
+      required: false
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: Optional breakdown into sub-tasks. Replace with `- [ ] #N` links as task issues are created.
+      value: |
+        - [ ]
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — critical / blocking
+        - P1 — high
+        - P2 — medium
+        - P3 — low / nice-to-have
+    validations:
+      required: true
