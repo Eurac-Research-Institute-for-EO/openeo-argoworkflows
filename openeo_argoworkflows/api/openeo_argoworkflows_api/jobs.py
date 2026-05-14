@@ -235,22 +235,22 @@ class ArgoJobsRegister(JobsRegister):
                 status_code=400,
                 detail="The job isn't running or queued and therefore could not be canceled",
             )
-        
-        req = WorkflowStopRequest(
-            name=job.workflowname,
-            namespace=self.settings.ARGO_WORKFLOWS_NAMESPACE,
-        )
 
-        try:
-            self.workflows_service.stop_workflow(
-                name = job.workflowname,
-                req=req,
-                namespace=req.namespace
+        if job.status == Status.running and job.workflowname:
+            req = WorkflowStopRequest(
+                name=job.workflowname,
+                namespace=self.settings.ARGO_WORKFLOWS_NAMESPACE,
             )
-        except NotFound:
-            logger.warning(f"Could not stop workflow {job.workflowname} for job {job.job_id}.")
-        
-        job.status = "created"
+            try:
+                self.workflows_service.stop_workflow(
+                    name=job.workflowname,
+                    req=req,
+                    namespace=req.namespace,
+                )
+            except NotFound:
+                logger.warning(f"Could not stop workflow {job.workflowname} for job {job.job_id}.")
+
+        job.status = Status.canceled
         engine.modify(modify_object=job)
         return Response(
             status_code=204, content="Process the job has been successfully canceled."
