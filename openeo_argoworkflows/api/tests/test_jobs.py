@@ -73,7 +73,7 @@ def test_stop_queued_job_sets_canceled(mock_engine, a_mock_user, mock_links, moc
     register = _make_register(mock_settings, mock_links)
 
     with patch.object(register, "workflows_service") as mock_ws:
-        resp = register.stop_job(job.job_id, a_mock_user)
+        resp = register.cancel_job(job.job_id, a_mock_user)
 
     mock_ws.stop_workflow.assert_not_called()
     assert resp.status_code == 204
@@ -88,7 +88,7 @@ def test_stop_running_job_calls_argo(mock_engine, a_mock_user, mock_links, mock_
     register = _make_register(mock_settings, mock_links)
 
     with patch.object(register, "workflows_service") as mock_ws:
-        resp = register.stop_job(job.job_id, a_mock_user)
+        resp = register.cancel_job(job.job_id, a_mock_user)
 
     mock_ws.stop_workflow.assert_called_once()
     assert resp.status_code == 204
@@ -111,6 +111,6 @@ def test_stop_finished_job_returns_400(mock_engine, a_mock_user, mock_links, moc
     register = _make_register(mock_settings, mock_links)
 
     with pytest.raises(HTTPException) as exc:
-        register.stop_job(job.job_id, a_mock_user)
+        register.cancel_job(job.job_id, a_mock_user)
 
     assert exc.value.status_code == 400

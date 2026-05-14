@@ -225,7 +225,7 @@ class ArgoJobsRegister(JobsRegister):
             content="The resource has been deleted successfully.",
         )
     
-    def stop_job(
+    def cancel_job(
         self, job_id: uuid.UUID, user: User = Depends(Authenticator.validate)
     ):
         job = engine.get(get_model=ArgoJob, primary_key=job_id)
