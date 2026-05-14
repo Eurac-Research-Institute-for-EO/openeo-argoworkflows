@@ -2,7 +2,7 @@ import datetime
 import fsspec
 
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from openeo_fastapi.client.psql.engine import create
 from openeo_argoworkflows_api.app import client
@@ -80,6 +80,45 @@ def test_signed_urls(a_mock_user, a_mock_job, mock_settings):
 
     resp = app.get(signed)
     assert resp.status_code == 200
+
+
+def test_cancel_queued_job_via_http(mock_engine, a_mock_user, mock_settings):
+    """DELETE /jobs/{id}/results on a queued job must return 204 without calling Argo."""
+    import uuid, datetime
+    from openeo_fastapi.client.psql.engine import create, get
+    from openeo_fastapi.client.auth import Authenticator
+    from openeo_argoworkflows_api.jobs import ArgoJob
+
+    job = ArgoJob(
+        job_id=uuid.uuid4(),
+        process_graph_id="testgraph",
+        status="queued",
+        user_id=a_mock_user.user_id,
+        created=datetime.datetime.now(),
+        description="test",
+        process={"x": {}},
+        workflowname=None,
+    )
+    create(job)
+
+    async def mock_validate():
+        return a_mock_user
+
+    app_api.dependency_overrides[Authenticator.validate] = mock_validate
+
+    url = f"{mock_settings.OPENEO_PREFIX}/jobs/{job.job_id}/results"
+
+    with patch("openeo_argoworkflows_api.jobs.WorkflowsService") as mock_ws_cls:
+        mock_ws_cls.return_value.stop_workflow = MagicMock()
+        test_client = TestClient(app_api)
+        resp = test_client.delete(url)
+
+    app_api.dependency_overrides.clear()
+
+    assert resp.status_code == 204
+
+    updated = get(get_model=ArgoJob, primary_key=job.job_id)
+    assert updated.status.value == "canceled"
 
 
 def test_get_credentials(mock_settings):
