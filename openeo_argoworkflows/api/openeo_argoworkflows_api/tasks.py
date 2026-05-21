@@ -106,11 +106,22 @@ def submit_job(job: ArgoJob):
     return q.enqueue(poll_job_status, job, response.metadata)
 
 
+def _detect_oom(workflow) -> bool:
+    """Return True if any workflow node was OOMKilled."""
+    nodes = getattr(workflow.status, "nodes", None) or {}
+    for node in nodes.values():
+        msg = (getattr(node, "message", None) or "").lower()
+        if "oomkilled" in msg or "out of memory" in msg:
+            return True
+    return False
+
+
 def poll_job_status(job: ArgoJob, metadata: Any):
-    """ Submit the job to argo. """
-    existing = get(get_model = ArgoJob, primary_key = job.job_id)
+    """Poll Argo for workflow status and sync to DB."""
+    existing = get(get_model=ArgoJob, primary_key=job.job_id)
     if not existing:
         return
+
     argo = WorkflowsService(
         host=settings.ARGO_WORKFLOWS_SERVER,
         verify_ssl=False,
@@ -118,16 +129,35 @@ def poll_job_status(job: ArgoJob, metadata: Any):
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
     )
 
-    workflow = argo.get_workflow(
-        name=metadata.name,
-        namespace=metadata.namespace
-    )
+    try:
+        workflow = argo.get_workflow(
+            name=metadata.name,
+            namespace=metadata.namespace
+        )
+    except Exception:
+        existing.status = Status.error
+        existing.message = "Workflow could not be found. It may have been deleted or expired."
+        modify(existing)
+        return
 
-    if workflow.status.phase == "Succeeded":
-        job.status = Status.finished
-        modify(job)
-    elif workflow.status.phase in ("Failed", "Error"):
-        job.status = Status.error
-        modify(job)
-    elif workflow.status.phase in ("Running", "Pending"):
+    phase = getattr(workflow.status, "phase", None)
+
+    if phase == "Succeeded":
+        existing.status = Status.finished
+        existing.message = None
+        modify(existing)
+    elif phase in ("Failed", "Error"):
+        if _detect_oom(workflow):
+            existing.message = (
+                "Job exceeded available memory. "
+                "Try reducing the temporal extent or spatial area and retry."
+            )
+        else:
+            existing.message = "Job failed. Please check the logs for details."
+        existing.status = Status.error
+        modify(existing)
+    elif phase in ("Running", "Pending"):
+        return q.enqueue(poll_job_status, job, metadata)
+    else:
+        # Unknown or None phase — re-enqueue to retry
         return q.enqueue(poll_job_status, job, metadata)

@@ -8,11 +8,17 @@ class ArgoJobORM(JobORM):
     workflowname = Column(VARCHAR, nullable=True)
     """The name of the argo workflow."""
 
+    message = Column(VARCHAR, nullable=True)
+    """User-facing message describing the current job state or failure reason."""
+
 
 class ArgoJob(Job):
 
     workflowname: Optional[str]
     """The name of the argo workflow."""
+
+    message: Optional[str] = None
+    """User-facing message describing the current job state or failure reason."""
 
     @classmethod
     def get_orm(cls):
