@@ -111,6 +111,9 @@ def load_collection(
     elif "proj:epsg" in example_item.properties.keys():
         crs = pyproj.CRS.from_epsg(example_item.properties["proj:epsg"])
         logger.info(f"Using CRS from proj:epsg: {example_item.properties['proj:epsg']}")
+    elif "proj:code" in example_item.properties.keys():
+        crs = pyproj.CRS.from_string(example_item.properties["proj:code"])
+        logger.info(f"Using CRS from proj:code: {example_item.properties['proj:code']}")
     else:
         # Default to EPSG:4326 if no CRS found
         crs = pyproj.CRS.from_epsg(4326)
