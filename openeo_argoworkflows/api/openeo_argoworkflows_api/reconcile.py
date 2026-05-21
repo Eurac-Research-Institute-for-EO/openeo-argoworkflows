@@ -8,14 +8,15 @@ and message accordingly.
 import logging
 
 from openeo_fastapi.api.types import Status
-from openeo_fastapi.client.psql.engine import get_all, modify
+from openeo_fastapi.client.psql.engine import get_engine, modify, Filter
+from openeo_fastapi.client.psql.settings import DataBaseSettings
 
-from openeo_argoworkflows_api.psql.models import ArgoJob
+from openeo_argoworkflows_api.psql.models import ArgoJob, ArgoJobORM, metadata
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 from openeo_argoworkflows_api.tasks import _detect_oom
-
-from argo_workflows.exceptions import NotFoundException
 from openeo_argoworkflows_api.workflows import WorkflowsService
+
+from sqlalchemy.orm import sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,13 @@ def reconcile():
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
     )
 
-    running_jobs = [
-        j for j in get_all(get_model=ArgoJob)
-        if j.status == Status.running
-    ]
+    engine = get_engine()
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        rows = session.query(ArgoJobORM).filter(
+            ArgoJobORM.status == Status.running.value
+        ).all()
+        running_jobs = [ArgoJob.from_orm(r) for r in rows]
 
     if not running_jobs:
         logger.info("No running jobs found — nothing to reconcile.")
