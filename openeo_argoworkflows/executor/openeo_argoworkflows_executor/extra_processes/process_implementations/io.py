@@ -220,6 +220,17 @@ def load_collection(
                 load_kwargs["bands"] = data_assets
                 logger.info(f"Loading auto-detected bands/assets: {data_assets}")
 
+    # odc-stac only understands proj:epsg/proj:wkt2/proj:projjson at the asset level.
+    # Normalize proj:code (proj extension v2) → proj:epsg so odc-stac can parse the items.
+    for item in result_items:
+        for asset in item.assets.values():
+            code = asset.extra_fields.get("proj:code", "")
+            if code.startswith("EPSG:") and "proj:epsg" not in asset.extra_fields:
+                try:
+                    asset.extra_fields["proj:epsg"] = int(code.split(":")[1])
+                except ValueError:
+                    pass
+
     logger.info(
         f"Loading data with CRS={crs}, resolution={resolution}, kwargs={load_kwargs}"
     )
