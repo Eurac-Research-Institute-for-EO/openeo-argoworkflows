@@ -13,12 +13,20 @@ from openeo_fastapi.client.psql.settings import DataBaseSettings
 
 from openeo_argoworkflows_api.psql.models import ArgoJob, ArgoJobORM, metadata
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
-from openeo_argoworkflows_api.tasks import _detect_oom
 from openeo_argoworkflows_api.workflows import WorkflowsService
 
 from sqlalchemy.orm import sessionmaker
 
 logger = logging.getLogger(__name__)
+
+
+def _detect_oom(workflow) -> bool:
+    nodes = getattr(workflow.status, "nodes", None) or {}
+    for node in nodes.values():
+        msg = (getattr(node, "message", None) or "").lower()
+        if "oomkilled" in msg or "out of memory" in msg:
+            return True
+    return False
 
 
 def reconcile():
