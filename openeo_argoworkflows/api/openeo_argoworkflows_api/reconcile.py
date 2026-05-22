@@ -6,13 +6,12 @@ Run as a Kubernetes CronJob every 5 minutes. Finds all jobs stuck at
 and message accordingly.
 """
 import logging
+import os
 
 from openeo_fastapi.api.types import Status
-from openeo_fastapi.client.psql.engine import get_engine, modify, Filter
-from openeo_fastapi.client.psql.settings import DataBaseSettings
+from openeo_fastapi.client.psql.engine import get_engine, modify
 
-from openeo_argoworkflows_api.psql.models import ArgoJob, ArgoJobORM, metadata
-from openeo_argoworkflows_api.settings import ExtendedAppSettings
+from openeo_argoworkflows_api.psql.models import ArgoJob, ArgoJobORM
 from openeo_argoworkflows_api.workflows import WorkflowsService
 
 from sqlalchemy.orm import sessionmaker
@@ -30,13 +29,15 @@ def _detect_oom(workflow) -> bool:
 
 
 def reconcile():
-    settings = ExtendedAppSettings()
+    argo_server = os.environ["ARGO_WORKFLOWS_SERVER"]
+    argo_namespace = os.environ["ARGO_WORKFLOWS_NAMESPACE"]
+    argo_token = os.environ["ARGO_WORKFLOWS_TOKEN"]
 
     argo = WorkflowsService(
-        host=settings.ARGO_WORKFLOWS_SERVER,
+        host=argo_server,
         verify_ssl=False,
-        namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
-        token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
+        namespace=argo_namespace,
+        token=argo_token,
     )
 
     engine = get_engine()
@@ -64,7 +65,7 @@ def reconcile():
         try:
             workflow = argo.get_workflow(
                 name=job.workflowname,
-                namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
+                namespace=argo_namespace,
             )
             phase = getattr(workflow.status, "phase", None)
         except Exception:
