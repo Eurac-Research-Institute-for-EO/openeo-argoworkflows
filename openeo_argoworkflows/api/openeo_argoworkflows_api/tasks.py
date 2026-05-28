@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from hera.workflows import  WorkflowsService
 from openeo_fastapi.api.types import Status
