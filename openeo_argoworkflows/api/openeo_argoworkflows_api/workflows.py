@@ -59,6 +59,7 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                             ),
                         ],
                         image=settings.OPENEO_EXECUTOR_IMAGE,
+                        image_pull_policy="Always",
                         command=["openeo_executor"],
                         args=[
                             "execute",
