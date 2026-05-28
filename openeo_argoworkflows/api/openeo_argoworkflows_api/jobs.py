@@ -10,6 +10,8 @@ import tarfile
 import time
 import uuid
 
+from openeo_argoworkflows_api.s3 import generate_presigned_url, is_s3_uri
+
 from hera.exceptions import NotFound
 from hera.workflows import WorkflowsService
 from hera.workflows.models import WorkflowStopRequest
@@ -404,26 +406,29 @@ class ArgoJobsRegister(JobsRegister):
                     item_dict = json.load(f)
                 for asset_key, asset_val in item_dict.get("assets", {}).items():
                     href = asset_val.get("href", "")
-                    # href is an absolute path like /user_workspaces/{user_id}/{job_id}/STAC/{datetime}/{file}.nc
-                    # We need the part relative to the user workspace: {job_id}/STAC/{datetime}/{file}.nc
-                    user_ws_prefix = str(wspace.user_directory) + "/"
-                    if href.startswith(user_ws_prefix):
-                        relative_file_path = href[len(user_ws_prefix):]
+
+                    if is_s3_uri(href):
+                        # Result was written to S3 — generate a pre-signed download URL
+                        signed_href = generate_presigned_url(href, expiry_seconds=int(week.total_seconds()))
                     else:
-                        relative_file_path = href.split("/")[-1]
+                        # Result is on local PVC — serve via signed API file URL (backward compat)
+                        user_ws_prefix = str(wspace.user_directory) + "/"
+                        if href.startswith(user_ws_prefix):
+                            relative_file_path = href[len(user_ws_prefix):]
+                        else:
+                            relative_file_path = href.split("/")[-1]
 
-                    path = "{prefix}/files/{rel_path}".format(
-                        prefix=self.settings.OPENEO_PREFIX, rel_path=relative_file_path
-                    )
-
-                    signed_href = API_SELF_URL.__add__(
-                        ExtendedAuthenticator.sign_url(
-                            url=path,
-                            key_name="OPENEO_SIGN_KEY",
-                            user_id=user.user_id,
-                            expiration_time=expiry
+                        path = "{prefix}/files/{rel_path}".format(
+                            prefix=self.settings.OPENEO_PREFIX, rel_path=relative_file_path
                         )
-                    )
+                        signed_href = API_SELF_URL.__add__(
+                            ExtendedAuthenticator.sign_url(
+                                url=path,
+                                key_name="OPENEO_SIGN_KEY",
+                                user_id=user.user_id,
+                                expiration_time=expiry
+                            )
+                        )
 
                     # Use item_id + asset_key as the collection-level asset key
                     collection_asset_key = f"{item_dict['id']}_{asset_key}"

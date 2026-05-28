@@ -94,6 +94,12 @@ def submit_job(job: ArgoJob):
         "OPENEO_USER_ID": str(job.user_id),
         "OPENEO_USER_WORKSPACE": str(settings.OPENEO_WORKSPACE_ROOT / str(job.user_id) / str(job.job_id))
     }
+
+    # Pass S3 credentials to executor pod if configured
+    for s3_var in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
+        val = os.environ.get(s3_var)
+        if val:
+            user_profile[s3_var] = val
     process_graph = _resolve_udps(job.process.process_graph, job.user_id)
     workflow = executor_workflow(argo, process_graph, dask_profile, user_profile)
 
