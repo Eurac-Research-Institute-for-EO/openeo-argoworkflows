@@ -24,6 +24,10 @@ import boto3
 logger = logging.getLogger(__name__)
 
 
+def is_s3_configured() -> bool:
+    return all(os.environ.get(v) for v in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"))
+
+
 def upload_to_s3(local_path: str) -> str:
     """Upload a local file to S3 and return its S3 URI.
 

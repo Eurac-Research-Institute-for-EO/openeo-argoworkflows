@@ -442,6 +442,4 @@ def save_result(
         logger.info("Wrote spatial_ref as dimensionless CF grid_mapping variable")
 
     logger.info(f"Successfully saved result to: {destination}")
-
-    from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_to_s3
-    return upload_to_s3(str(destination))
+    return str(destination)
