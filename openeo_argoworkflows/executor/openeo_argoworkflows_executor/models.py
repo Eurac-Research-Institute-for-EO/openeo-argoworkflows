@@ -10,6 +10,12 @@ class UserProfile(BaseModel):
     OPENEO_JOB_ID: str
     OPENEO_USER_WORKSPACE: Path
 
+    # S3 object store — optional, forwarded from the API pod
+    S3_ENDPOINT_URL: Optional[str] = None
+    S3_BUCKET: Optional[str] = None
+    S3_ACCESS_KEY: Optional[str] = None
+    S3_SECRET_KEY: Optional[str] = None
+
     @property
     def results_path(self) -> Path:
         return self.OPENEO_USER_WORKSPACE / "RESULTS"

@@ -72,6 +72,11 @@ def execute(process_graph, user_profile, dask_profile):
     os.environ["OPENEO_STAC_PATH"] = str(openeo_parameters.user_profile.stac_path)
     os.environ["OPENEO_RESULTS_PATH"] = str(openeo_parameters.user_profile.results_path)
 
+    for s3_var in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
+        val = getattr(openeo_parameters.user_profile, s3_var, None)
+        if val:
+            os.environ[s3_var] = val
+
     is_cwl = _is_cwl_job(openeo_parameters.process_graph)
 
     # CWL jobs don't need a Dask cluster — skip cluster setup entirely
