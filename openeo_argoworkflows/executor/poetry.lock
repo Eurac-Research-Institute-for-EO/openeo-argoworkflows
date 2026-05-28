@@ -371,6 +371,25 @@ jupyter = ["ipython (>=7.8.0)", "tokenize-rt (>=3.2.0)"]
 uvloop = ["uvloop (>=0.15.2)", "winloop (>=0.5.0)"]
 
 [[package]]
+name = "boto3"
+version = "1.42.5"
+description = "The AWS SDK for Python"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "boto3-1.42.5-py3-none-any.whl", hash = "sha256:7d22cd102c77c37d552783308eeb01a088c0e3f6e707157dd6d1842b205ffce7"},
+    {file = "boto3-1.42.5.tar.gz", hash = "sha256:e3b7be255e5e29272b6424af4417005384f5a3f1caf6ca3352258ee1d9b8551a"},
+]
+
+[package.dependencies]
+botocore = ">=1.42.5,<1.43.0"
+jmespath = ">=0.7.1,<2.0.0"
+s3transfer = ">=0.16.0,<0.17.0"
+
+[package.extras]
+crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
+
+[[package]]
 name = "botocore"
 version = "1.42.5"
 description = "Low-level, data-driven core of boto 3."
@@ -1880,7 +1899,7 @@ name = "gdal"
 version = "3.6.2"
 description = "GDAL: Geospatial Data Abstraction Library"
 optional = false
-python-versions = ">=3.8.0"
+python-versions = ">=3.6.0"
 files = [
     {file = "GDAL-3.6.2.tar.gz", hash = "sha256:a167cde1813707d91a938dad1a22f280f5ad28c45980d42e948fb8c59f890f5a"},
 ]
@@ -5418,6 +5437,23 @@ aiohttp = "<4.0.0a0 || >4.0.0a0,<4.0.0a1 || >4.0.0a1"
 fsspec = "2026.2.0"
 
 [[package]]
+name = "s3transfer"
+version = "0.16.1"
+description = "An Amazon S3 Transfer Manager"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "s3transfer-0.16.1-py3-none-any.whl", hash = "sha256:61bcd00ccb83b21a0fe7e91a553fff9729d46c83b4e0106e7c314a733891f7c2"},
+    {file = "s3transfer-0.16.1.tar.gz", hash = "sha256:8e424355754b9ccb32467bdc568edf55be82692ef2002d934b1311dbb3b9e524"},
+]
+
+[package.dependencies]
+botocore = ">=1.37.4,<2.0a.0"
+
+[package.extras]
+crt = ["botocore[crt] (>=1.37.4,<2.0a.0)"]
+
+[[package]]
 name = "schema-salad"
 version = "8.9.20251102115403"
 description = "Schema Annotations for Linked Avro Data (SALAD)"
@@ -6634,4 +6670,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "18aea9173df53b80b46734dc34f7ed668e92c226d0ae5ae94543de18ca900461"
+content-hash = "0e5143beea8fda778f6a81b942f96874efa0fd23854e7562fc84aa7d49f3c796"
