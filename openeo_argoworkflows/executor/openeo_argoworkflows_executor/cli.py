@@ -71,6 +71,8 @@ def execute(process_graph, user_profile, dask_profile):
     )
     os.environ["OPENEO_STAC_PATH"] = str(openeo_parameters.user_profile.stac_path)
     os.environ["OPENEO_RESULTS_PATH"] = str(openeo_parameters.user_profile.results_path)
+    os.environ["OPENEO_USER_ID"] = str(openeo_parameters.user_profile.OPENEO_USER_ID)
+    os.environ["OPENEO_JOB_ID"] = str(openeo_parameters.user_profile.OPENEO_JOB_ID)
 
     for s3_var in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
         val = getattr(openeo_parameters.user_profile, s3_var, None)
