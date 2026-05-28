@@ -202,28 +202,22 @@ def execute(process_graph, user_profile, dask_profile):
             from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_to_s3, is_s3_configured
             if is_s3_configured():
                 import glob as _glob
-                # Upload each .nc file and build local→s3 mapping
-                href_map = {}
-                for local_file in result_files:
-                    s3_uri = upload_to_s3(local_file)
-                    if s3_uri != local_file:
-                        href_map[local_file] = s3_uri
-                        logger.info(f"Uploaded {local_file} → {s3_uri}")
-                # Patch all STAC item JSON files
-                if href_map:
-                    for item_json in _glob.glob(f"{stac_path}/items/*.json"):
-                        with open(item_json, "r") as f:
-                            item = json.load(f)
-                        changed = False
-                        for asset in item.get("assets", {}).values():
-                            href = asset.get("href", "")
-                            if href in href_map:
-                                asset["href"] = href_map[href]
+                for item_json in _glob.glob(f"{stac_path}/items/*.json"):
+                    with open(item_json, "r") as f:
+                        item = json.load(f)
+                    changed = False
+                    for asset in item.get("assets", {}).values():
+                        href = asset.get("href", "")
+                        if href and os.path.isfile(href):
+                            s3_uri = upload_to_s3(href)
+                            if s3_uri != href:
+                                asset["href"] = s3_uri
                                 changed = True
-                        if changed:
-                            with open(item_json, "w") as f:
-                                json.dump(item, f)
-                            logger.info(f"Patched STAC item hrefs in {item_json}")
+                                logger.info(f"Uploaded {href} → {s3_uri}")
+                    if changed:
+                        with open(item_json, "w") as f:
+                            json.dump(item, f)
+                        logger.info(f"Patched STAC item hrefs in {item_json}")
 
             # POST collection to STAC API
             collection_file = f"{stac_path}/{job_id}.json"
