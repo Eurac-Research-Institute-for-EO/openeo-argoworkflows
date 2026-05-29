@@ -172,7 +172,7 @@ api.app.router.add_api_route(
     name="s3_proxy_download",
     path=f"{client.settings.OPENEO_PREFIX}/jobs/{{job_id}}/results/download/{{filename}}",
     response_model=None,
-    methods=["GET"],
+    methods=["GET", "HEAD"],
     endpoint=s3_proxy_download,
 )
 
