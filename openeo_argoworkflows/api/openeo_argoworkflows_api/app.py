@@ -1,10 +1,15 @@
 
 import json
+import uuid
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from starlette.responses import RedirectResponse
+
+from openeo_fastapi.client.psql.engine import get
+from openeo_argoworkflows_api.s3 import is_s3_uri, s3_download_stream
 
 from openeo_fastapi.api.app import OpenEOApi
 from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
@@ -98,6 +103,48 @@ api.app.add_middleware(
     ],
 )
 
+def s3_proxy_download(job_id: uuid.UUID, filename: str):
+    """Proxy download for S3 result files — bypasses browser CORS restrictions.
+
+    Fetches the file from CEPH S3 internally and streams it to the client.
+    The browser talks to openeo.eurac.edu (no cross-origin request needed).
+    """
+    from openeo_argoworkflows_api.jobs import ArgoJob
+    from openeo_argoworkflows_api.settings import ExtendedAppSettings
+
+    job = get(get_model=ArgoJob, primary_key=job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    settings = ExtendedAppSettings()
+    import glob, json as _json
+    stac_items_dir = Path(settings.OPENEO_WORKSPACE_ROOT) / str(job.user_id) / str(job_id) / "STAC" / "items"
+    href = None
+    for item_path in glob.glob(str(stac_items_dir / "*.json")):
+        with open(item_path) as f:
+            item = _json.load(f)
+        for asset in item.get("assets", {}).values():
+            if asset.get("href", "").endswith(filename) and is_s3_uri(asset.get("href", "")):
+                href = asset["href"]
+                break
+        if href:
+            break
+
+    if not href:
+        raise HTTPException(status_code=404, detail=f"Result file '{filename}' not found or not on S3")
+
+    try:
+        body, content_length, content_type = s3_download_stream(href)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch from S3: {e}")
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if content_length:
+        headers["Content-Length"] = str(content_length)
+
+    return StreamingResponse(body.iter_chunks(), media_type=content_type, headers=headers)
+
+
 def redirect_wellknown():
     return RedirectResponse("/.well-known/openeo")
 
@@ -119,6 +166,14 @@ api.app.router.add_api_route(
     response_model_exclude_none=True,
     methods=["GET"],
     endpoint=redirect_wellknown,
+)
+
+api.app.router.add_api_route(
+    name="s3_proxy_download",
+    path=f"{client.settings.OPENEO_PREFIX}/jobs/{{job_id}}/results/download/{{filename}}",
+    response_model=None,
+    methods=["GET"],
+    endpoint=s3_proxy_download,
 )
 
 app = api.app

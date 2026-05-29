@@ -408,8 +408,13 @@ class ArgoJobsRegister(JobsRegister):
                     href = asset_val.get("href", "")
 
                     if is_s3_uri(href):
-                        # Result was written to S3 — generate a pre-signed download URL
-                        signed_href = generate_presigned_url(href, expiry_seconds=int(week.total_seconds()))
+                        # Result was written to S3 — proxy through API to avoid CORS
+                        signed_href = generate_presigned_url(
+                            href,
+                            job_id=str(job_id),
+                            api_base=API_SELF_URL,
+                            openeo_prefix=self.settings.OPENEO_PREFIX,
+                        )
                     else:
                         # Result is on local PVC — serve via signed API file URL (backward compat)
                         user_ws_prefix = str(wspace.user_directory) + "/"

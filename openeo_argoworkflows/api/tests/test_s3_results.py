@@ -29,14 +29,26 @@ def test_is_s3_uri_false():
     assert is_s3_uri("/user_workspaces/user-123/job-456/RESULTS/result.nc") is False
 
 
-# Given: an S3 URI
+# Given: an S3 URI with job_id and api_base
 # When: generate_presigned_url is called
-# Then: returns a direct public https URL (no boto3 needed)
-def test_generate_presigned_url_returns_public_https(monkeypatch):
+# Then: returns a proxy URL through the API (no CORS issue)
+def test_generate_presigned_url_returns_proxy_url():
+    url = generate_presigned_url(
+        "s3://eo-public/user-123/job-456/result.nc",
+        job_id="job-456",
+        api_base="https://openeo.eurac.edu",
+        openeo_prefix="/openeo/1.1.0",
+    )
+    assert url == "https://openeo.eurac.edu/openeo/1.1.0/jobs/job-456/results/download/result.nc"
+
+
+# Given: an S3 URI without job_id/api_base
+# When: generate_presigned_url is called
+# Then: falls back to direct public URL
+def test_generate_presigned_url_fallback_to_direct(monkeypatch):
     monkeypatch.setenv("S3_ENDPOINT_URL", "https://s3.scientificnet.org")
     url = generate_presigned_url("s3://eo-public/user-123/job-456/result.nc")
     assert url == "https://s3.scientificnet.org/eo-public/user-123/job-456/result.nc"
-    assert url.startswith("https://")
 
 
 # Given: generate_presigned_url called with a non-S3 URI
@@ -48,7 +60,7 @@ def test_generate_presigned_url_passthrough_for_non_s3():
     assert result == local_href
 
 
-# Given: S3_ENDPOINT_URL not set
+# Given: S3_ENDPOINT_URL not set, no job_id/api_base
 # When: generate_presigned_url is called
 # Then: falls back to default scientificnet endpoint
 def test_generate_presigned_url_uses_default_endpoint():
