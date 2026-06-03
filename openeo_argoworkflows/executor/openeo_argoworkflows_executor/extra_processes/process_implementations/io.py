@@ -13,6 +13,8 @@ from openeo_processes_dask.process_implementations.cubes._filter import filter_b
 from openeo_processes_dask.process_implementations.data_model import RasterCube
 from pystac.extensions import raster
 
+from openeo_argoworkflows_executor.timeout import compute_with_timeout
+
 __all__ = ["load_collection", "save_result"]
 
 logger = logging.getLogger(__name__)
@@ -415,7 +417,8 @@ def save_result(
                 del out_data[var].attrs[key]
 
     logger.info(f"Writing netCDF to: {destination}")
-    out_data.to_netcdf(path=destination, encoding=encoding)
+    compute_timeout = int(os.environ.get("OPENEO_COMPUTE_TIMEOUT", "600"))
+    compute_with_timeout(out_data.to_netcdf, path=destination, encoding=encoding, timeout=compute_timeout)
 
     # Re-open with netCDF4 to fix spatial_ref: xarray writes scalar coords as
     # data variables with a dimension, but GDAL needs a true dimensionless variable
