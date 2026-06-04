@@ -13,6 +13,7 @@ from openeo_processes_dask.process_implementations.cubes._filter import filter_b
 from openeo_processes_dask.process_implementations.data_model import RasterCube
 from pystac.extensions import raster
 
+from openeo_argoworkflows_executor.crs import _extract_crs
 from openeo_argoworkflows_executor.timeout import compute_with_timeout
 
 __all__ = ["load_collection", "save_result"]
@@ -105,21 +106,7 @@ def load_collection(
 
     example_item = result_items[0]
 
-    # Extract CRS from item properties
-    crs = None
-    if "proj:wkt2" in example_item.properties.keys():
-        crs = pyproj.CRS.from_wkt(example_item.properties["proj:wkt2"])
-        logger.info(f"Using CRS from proj:wkt2: {crs.name}")
-    elif "proj:epsg" in example_item.properties.keys():
-        crs = pyproj.CRS.from_epsg(example_item.properties["proj:epsg"])
-        logger.info(f"Using CRS from proj:epsg: {example_item.properties['proj:epsg']}")
-    elif "proj:code" in example_item.properties.keys():
-        crs = pyproj.CRS.from_string(example_item.properties["proj:code"])
-        logger.info(f"Using CRS from proj:code: {example_item.properties['proj:code']}")
-    else:
-        # Default to EPSG:4326 if no CRS found
-        crs = pyproj.CRS.from_epsg(4326)
-        logger.warning("No CRS found in item properties, defaulting to EPSG:4326")
+    crs = _extract_crs(example_item)
 
     # Initialize variables with defaults
     resolution = None
