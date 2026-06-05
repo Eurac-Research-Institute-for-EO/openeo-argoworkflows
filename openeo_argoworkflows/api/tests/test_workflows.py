@@ -70,3 +70,39 @@ class TestExecutorWorkflowEnv:
         env = _get_container_env(w)
         assert "AWS_ENDPOINT_URL_S3" in env
         assert env["AWS_ENDPOINT_URL_S3"].value_from.secret_key_ref.key == "AWS_ENDPOINT_URL_S3"
+
+
+class TestExecutorWorkflowDeadline:
+
+    def _make_deadline_workflow(self, deadline=7200, compute_timeout=600):
+        mock_settings = MagicMock()
+        mock_settings.STAC_API_URL = "https://stac.eurac.edu"
+        mock_settings.OPENEO_EXECUTOR_IMAGE = "ghcr.io/test/executor:latest"
+        mock_settings.OPENEO_WORKSPACE_ROOT = "/user_workspaces"
+        mock_settings.OPENEO_EXECUTOR_DEADLINE = deadline
+        mock_settings.OPENEO_COMPUTE_TIMEOUT = compute_timeout
+
+        mock_service = create_autospec(WorkflowsService, instance=True)
+        mock_service.namespace = "openeo"
+
+        with patch("openeo_argoworkflows_api.workflows.ExtendedAppSettings", return_value=mock_settings):
+            return executor_workflow(
+                service=mock_service,
+                process_graph={},
+                dask_profile={},
+                user_profile={"OPENEO_JOB_ID": "job-123", "OPENEO_USER_ID": "user-456"},
+            )
+
+    def test_active_deadline_seconds_is_set(self, monkeypatch):
+        """Workflow must have active_deadline_seconds so Argo kills hung executor pods."""
+        w = self._make_deadline_workflow(deadline=7200)
+        assert w.active_deadline_seconds == 7200, \
+            "Workflow.active_deadline_seconds must be set so Argo kills hung executor pods"
+
+    def test_compute_timeout_injected_into_executor_pod(self, monkeypatch):
+        """OPENEO_COMPUTE_TIMEOUT must be injected into the executor pod env."""
+        w = self._make_deadline_workflow(compute_timeout=900)
+        env = _get_container_env(w)
+        assert "OPENEO_COMPUTE_TIMEOUT" in env, \
+            "OPENEO_COMPUTE_TIMEOUT must be passed to executor pod — io.py reads it from env"
+        assert env["OPENEO_COMPUTE_TIMEOUT"].value == "900"

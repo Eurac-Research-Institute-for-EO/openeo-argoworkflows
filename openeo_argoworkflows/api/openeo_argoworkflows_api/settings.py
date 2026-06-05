@@ -23,3 +23,6 @@ class ExtendedAppSettings(AppSettings):
 
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+
+    OPENEO_EXECUTOR_DEADLINE: int = 7200
+    OPENEO_COMPUTE_TIMEOUT: int = 600

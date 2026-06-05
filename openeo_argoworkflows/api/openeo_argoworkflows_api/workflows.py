@@ -29,7 +29,8 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                 claim_name="openeo-workspace"
             )
         ),
-        deletion_grace_period_seconds=1800
+        deletion_grace_period_seconds=1800,
+        active_deadline_seconds=settings.OPENEO_EXECUTOR_DEADLINE,
     ) as w:
         with Steps(name="process"):
             Step(
@@ -39,6 +40,7 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                     container=Container(
                         env=[
                             Env(name="STAC_API_URL", value=str(settings.STAC_API_URL)),
+                            Env(name="OPENEO_COMPUTE_TIMEOUT", value=str(settings.OPENEO_COMPUTE_TIMEOUT)),
                             EnvVar(
                                 name="AWS_ACCESS_KEY_ID",
                                 value_from=EnvVarSource(
