@@ -3,18 +3,24 @@ name: Build and publish executor image
 on:
   push:
     branches:
-      - main
-      - eurac-main
+      - dedl-eurac
     paths:
       - 'Dockerfile.executor'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/**'
       - 'openeo_argoworkflows/executor/pyproject.toml'
       - 'openeo_argoworkflows/executor/poetry.lock'
+      - '.github/workflows/build-executor.yaml'
   workflow_dispatch:
+    inputs:
+      version_tag:
+        description: Optional version tag (e.g. executor-2026.6.1)
+        required: false
+        default: ''
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/openeo-argoworkflows-executor
+  IS_REF_BRANCH: ${{ github.ref_name == 'dedl-eurac' }}
 
 jobs:
   build-and-push:
@@ -41,7 +47,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ env.IS_REF_BRANCH }}
+            type=raw,value=${{ inputs.version_tag }},enable=${{ inputs.version_tag != '' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
