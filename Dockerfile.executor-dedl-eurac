@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG BASE_EXECUTOR_IMAGE=ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:latest
+ARG BASE_EXECUTOR_IMAGE=ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:dedl-eurac
 
 FROM ${BASE_EXECUTOR_IMAGE}
 

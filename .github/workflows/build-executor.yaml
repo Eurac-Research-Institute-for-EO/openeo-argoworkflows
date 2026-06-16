@@ -47,6 +47,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=
+            type=raw,value=dedl-eurac,enable=${{ env.IS_REF_BRANCH }}
             type=raw,value=latest,enable=${{ env.IS_REF_BRANCH }}
             type=raw,value=${{ inputs.version_tag }},enable=${{ inputs.version_tag != '' }}
 

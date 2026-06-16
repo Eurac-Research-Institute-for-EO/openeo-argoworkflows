@@ -13,7 +13,7 @@ on:
       base_executor_image:
         description: Base executor image to extend
         required: true
-        default: ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:latest
+        default: ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:dedl-eurac
       dedl_package_ref:
         description: Git ref for openeo-processes-dedl-cube-load
         required: true
@@ -22,7 +22,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/openeo-argoworkflows-executor-dedl-eurac
-  BASE_EXECUTOR_IMAGE: ${{ inputs.base_executor_image || 'ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:latest' }}
+  BASE_EXECUTOR_IMAGE: ${{ inputs.base_executor_image || 'ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:dedl-eurac' }}
   DEDL_PACKAGE_REF: ${{ inputs.dedl_package_ref || 'main' }}
   IS_REF_BRANCH: ${{ github.ref_name == 'dedl-eurac' }}
 
