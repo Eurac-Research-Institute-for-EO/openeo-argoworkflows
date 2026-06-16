@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openeo-argoworkflows-api"
-version = "2025.5.1"
+version = "2026.6.1"
 description = ""
 authors = ["sean <sean.hoyal@external.eodc.eu>"]
 readme = "README.md"
@@ -8,7 +8,7 @@ packages = [{include = "openeo_argoworkflows_api"}]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-openeo_fastapi = "^2025.5.1"
+openeo_fastapi = "^2026.6.1"
 hera = "^5.15.1"
 python-multipart = "^0.0.16"
 redis = "5.0.4"
@@ -26,6 +26,7 @@ pytest-asyncio = "^0.23.0"
 pytest-postgresql= ">=4.1.1"
 pydoc-markdown = "4.8.2"
 fakeredis = "2.23.2"
+lxml = "^6.1.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -8,11 +8,17 @@ ENV POETRY_EXPERIMENTAL_SYSTEM_GIT_CLIENT 1
 ARG POETRY_VERSION="1.8.3"
 RUN if [ "${POETRY_VERSION}" != "none" ]; then su vscode -c "umask 0002 && pip3 install poetry==${POETRY_VERSION}"; fi
 
-RUN rm -f /etc/apt/sources.list.d/yarn.list && \
-    apt update -qy && \
+RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/yarnkey.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/yarnkey.gpg] https://dl.yarnpkg.com/debian stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+
+RUN apt update -qy && \
     apt install -qy --no-install-recommends \
         git \
         libgdal-dev \
         gdal-bin
+
+ENV USERNAME=executor
+ARG USER_ID=1000
+ARG GROUP_ID=1000
 
 WORKDIR /openeo_argoworkflows_executor

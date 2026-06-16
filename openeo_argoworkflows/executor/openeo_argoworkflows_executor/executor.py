@@ -2,12 +2,15 @@ import importlib
 import inspect
 import logging
 from typing import Optional
+import sys
+
+from openeo_pg_parser_networkx import Process, ProcessRegistry, OpenEOProcessGraph
+from openeo_processes_dask_slim.process_implementations.core import process
 
 from openeo_argoworkflows_executor.stac import StacGrid
 from openeo_argoworkflows_executor.utils import derive_sub_graph, get_pg_bounding_box
-from openeo_pg_parser_networkx import OpenEOProcessGraph, Process, ProcessRegistry
-from openeo_processes_dask.process_implementations.core import process
 
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 
@@ -46,12 +49,6 @@ def prepare_graphs(process_graph: OpenEOProcessGraph):
     # We get the total bounding box from the process graph
     _box = get_pg_bounding_box(process_graph.pg_data)
 
-    if _box is None:
-        raise ValueError(
-            "Could not determine spatial_extent from process graph. "
-            "Ensure load_collection or the top-level process has a bbox/spatial_extent argument."
-        )
-
     bbox = [_box.west, _box.south, _box.east, _box.north]
 
     tilesize = 100000
@@ -72,54 +69,13 @@ def prepare_graphs(process_graph: OpenEOProcessGraph):
     return sub_graphs
 
 
-def _is_cwl_job(pg_data: dict) -> bool:
-    """Check if the process graph is a CWL job.
-
-    Detects either:
-    - process_id = "run_cwl" (legacy)
-    - process_id = "run_udf" with runtime argument == "EOAP-CWL" (case-insensitive)
-    """
-    for node_id, node in pg_data.items():
-        if not isinstance(node, dict):
-            continue
-        pid = node.get("process_id")
-        if pid == "run_cwl":
-            return True
-        if pid == "run_udf":
-            args = node.get("arguments", {})
-            runtime = args.get("runtime", "")
-            if isinstance(runtime, str) and runtime.lower() == "eoap-cwl":
-                return True
-    return False
-
-
-def _execute_cwl(parsed_graph: OpenEOProcessGraph, process_registry: ProcessRegistry):
-    """Execute a CWL process graph directly, bypassing tiling and Dask.
-
-    CWL jobs don't have spatial extents or load_collection nodes,
-    so the standard tiling pipeline doesn't apply. We execute the
-    process graph as a single callable.
-    """
-    logger.info("Detected CWL job — executing directly (no spatial tiling)")
-    pg_callable = parsed_graph.to_callable(
-        process_registry=process_registry,
-        results_cache={},
-    )
-    pg_callable()
-
-
 def execute(parsed_graph: OpenEOProcessGraph):
     process_registry = ProcessRegistry(wrap_funcs=[process])
 
-    _register_processes_from_module(process_registry, "openeo_processes_dask")
+    _register_processes_from_module(process_registry, "openeo_processes_dask_slim")
     _register_processes_from_module(
         process_registry, "openeo_argoworkflows_executor.extra_processes"
     )
-
-    # CWL jobs bypass tiling/Dask — they run Calrissian directly
-    if _is_cwl_job(parsed_graph.pg_data):
-        _execute_cwl(parsed_graph, process_registry)
-        return
 
     sub_graphs = prepare_graphs(parsed_graph)
 

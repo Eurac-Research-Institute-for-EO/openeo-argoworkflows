@@ -164,4 +164,4 @@ cython_debug/
 .env
 .notebooks/
 .vscode/
-docs/s3-migration-story.md
+notebooks/test_load_collection.ipynb

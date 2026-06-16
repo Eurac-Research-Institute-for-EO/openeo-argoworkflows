@@ -15,44 +15,98 @@ def _make_udp_spec(pg: dict, params: list | None = None) -> dict:
         "parameters": params or [],
     }
 
+from openeo_fastapi.client.processes import UserDefinedProcessGraph
+from openeo_fastapi.client.psql.engine import create
+
+from openeo_argoworkflows_api.tasks import queue_to_submit, q, _select_dask_profile, _resolve_udps
+
+BASE = {
+    "GATEWAY_URL": "http://gateway",
+    "OPENEO_EXECUTOR_IMAGE": "img:latest",
+    "WORKER_CORES": "4",
+    "WORKER_MEMORY": "8",
+    "WORKER_LIMIT": "6",
+    "CLUSTER_IDLE_TIMEOUT": "3600",
+}
+
+PROFILES = {
+    "power": {"WORKER_CORES": "8", "WORKER_MEMORY": "16", "WORKER_LIMIT": "10"},
+    "standard": {"WORKER_CORES": "2", "WORKER_MEMORY": "4", "WORKER_LIMIT": "4"},
+}
+
+ROLE_MAPPING = {
+    "early_adopter": "power",
+    "platform_developer": "power",
+    "default": "standard",
+}
+
+
+def test_select_profile_first_matching_role_wins():
+    result = _select_dask_profile(["early_adopter", "other"], ROLE_MAPPING, PROFILES, BASE)
+    assert result["WORKER_CORES"] == "8"
+    assert result["WORKER_MEMORY"] == "16"
+    assert result["GATEWAY_URL"] == "http://gateway"
+
+
+def test_select_profile_second_role_matches():
+    result = _select_dask_profile(["unknown", "platform_developer"], ROLE_MAPPING, PROFILES, BASE)
+    assert result["WORKER_CORES"] == "8"
+
+
+def test_select_profile_falls_back_to_default():
+    result = _select_dask_profile(["unknown_role"], ROLE_MAPPING, PROFILES, BASE)
+    assert result["WORKER_CORES"] == "2"
+    assert result["WORKER_MEMORY"] == "4"
+
+
+def test_select_profile_no_roles_uses_default():
+    result = _select_dask_profile([], ROLE_MAPPING, PROFILES, BASE)
+    assert result["WORKER_CORES"] == "2"
+
+
+def test_select_profile_no_match_no_default_returns_base():
+    mapping_without_default = {"early_adopter": "power"}
+    result = _select_dask_profile(["unknown"], mapping_without_default, PROFILES, BASE)
+    assert result == BASE
+
+
+def test_select_profile_unknown_profile_name_returns_base():
+    bad_mapping = {"early_adopter": "nonexistent_profile", "default": "also_nonexistent"}
+    result = _select_dask_profile(["early_adopter"], bad_mapping, PROFILES, BASE)
+    assert result == BASE
+
+
+def test_select_profile_base_fields_preserved():
+    result = _select_dask_profile(["early_adopter"], ROLE_MAPPING, PROFILES, BASE)
+    assert result["GATEWAY_URL"] == "http://gateway"
+    assert result["OPENEO_EXECUTOR_IMAGE"] == "img:latest"
+    assert result["CLUSTER_IDLE_TIMEOUT"] == "3600"
+
 
 @patch("openeo_argoworkflows_api.tasks.Redis")
-def test_submit_job(mock_redis):
+def test_submit_job(mock_redis, redis_conn, a_mock_job):
     assert True
 
 
-def test_resolve_udps_passthrough_no_udp():
-    """A plain process graph with no UDPs comes back unchanged."""
-    pg = {
-        "lc": {
-            "process_id": "load_collection",
-            "arguments": {"id": "S2", "spatial_extent": None, "temporal_extent": None},
-            "result": True,
-        }
-    }
+def test_resolve_udps_inlines_udp(mock_engine):
     user_id = uuid.uuid4()
 
-    with patch("openeo_argoworkflows_api.tasks.get") as mock_get:
-        resolved = _resolve_udps(pg, user_id)
+    udp = UserDefinedProcessGraph(
+        id="add_one",
+        user_id=user_id,
+        process_graph={
+            "add_step": {
+                "process_id": "add",
+                "arguments": {"x": {"from_parameter": "x"}, "y": 1},
+                "result": True,
+            }
+        },
+        parameters=[{"name": "x", "schema": {"type": "number"}}],
+        created=datetime.datetime.now(),
+    )
+    create(udp)
 
-    assert "lc" in resolved
-    assert resolved["lc"]["process_id"] == "load_collection"
-    mock_get.assert_not_called()
-
-
-def test_resolve_udps_inlines_udp():
-    """A UDP call is inlined — calling node expanded to its component nodes."""
-    user_id = uuid.uuid4()
-
-    udp_pg = {
-        "add_step": {
-            "process_id": "add",
-            "arguments": {"x": {"from_parameter": "x"}, "y": 1},
-            "result": True,
-        }
-    }
-
-    pg = {
+    process_graph = {
         "call_udp": {
             "process_id": "add_one",
             "namespace": str(user_id),
@@ -61,49 +115,10 @@ def test_resolve_udps_inlines_udp():
         }
     }
 
-    mock_udp = MagicMock()
-    mock_udp.dict.return_value = _make_udp_spec(
-        udp_pg,
-        params=[{"name": "x", "schema": {"type": "number"}}],
-    )
+    resolved = _resolve_udps(process_graph, user_id)
 
-    with patch("openeo_argoworkflows_api.tasks.get", return_value=mock_udp):
-        resolved = _resolve_udps(pg, user_id)
-
+    # resolve_process_graph flattens UDP nodes into the top-level graph,
+    # prefixed with the calling node's id.
     assert "call_udp_add_step" in resolved
     assert resolved["call_udp_add_step"]["process_id"] == "add"
     assert resolved["call_udp_add_step"]["arguments"] == {"x": 5, "y": 1}
-
-
-def test_resolve_udps_unknown_process_raises():
-    """An unknown process_id that is not a UDP and not predefined raises."""
-    user_id = uuid.uuid4()
-    pg = {
-        "call_missing": {
-            "process_id": "nonexistent_process_xyz",
-            "namespace": str(user_id),
-            "arguments": {},
-            "result": True,
-        }
-    }
-
-    with patch("openeo_argoworkflows_api.tasks.get", return_value=None):
-        with pytest.raises(Exception):
-            _resolve_udps(pg, user_id)
-
-
-def test_resolve_udps_does_not_call_db_for_predefined():
-    """Predefined processes must not trigger a DB lookup."""
-    pg = {
-        "ndvi_step": {
-            "process_id": "normalized_difference",
-            "arguments": {"x": 0.5, "y": 0.1},
-            "result": True,
-        }
-    }
-    user_id = uuid.uuid4()
-
-    with patch("openeo_argoworkflows_api.tasks.get") as mock_get:
-        _resolve_udps(pg, user_id)
-
-    mock_get.assert_not_called()

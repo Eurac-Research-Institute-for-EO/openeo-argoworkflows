@@ -35,18 +35,21 @@ def cli():
 def execute(process_graph, user_profile, dask_profile):
     """CLI for running the OpenEOExecutor on an OpenEO process graph."""
 
+    import os
     import json
     import os
 
-    import openeo_processes_dask
     from dask_gateway import Gateway
-    from openeo_argoworkflows_executor.executor import _is_cwl_job, execute
+    import openeo_processes_dask_slim
+    from openeo_pg_parser_networkx.graph import OpenEOProcessGraph
+
+    from openeo_argoworkflows_executor.executor import execute
     from openeo_argoworkflows_executor.models import ExecutorParameters
     from openeo_argoworkflows_executor.stac import create_stac_item
     from openeo_pg_parser_networkx.graph import OpenEOProcessGraph
 
     logger.info(
-        f"Using processes from openeo-processes-dask v{openeo_processes_dask.__version__}"
+        f"Using processes from openeo-processes-dask-slim v{openeo_processes_dask_slim.__version__}"
     )
 
     openeo_parameters = ExecutorParameters(
@@ -142,13 +145,11 @@ def execute(process_graph, user_profile, dask_profile):
         "OPENEO_RESULTS_STAC_URL", "https://stac.openeo.eurac.edu/"
     )
 
-    # Collect all result files
-    fs = fsspec.filesystem(protocol="file")
-    all_result_files = [
-        f["name"] for f in fs.listdir(results_path) if not f["name"].startswith(".")
-    ]
-    result_files = [f for f in all_result_files if f.endswith(".nc")]
-    other_files = [f for f in all_result_files if not f.endswith(".nc")]
+    collection_href = str(
+        openeo_parameters.user_profile.stac_path
+        / f"{output_collection.id}_collection.json"
+    )
+    output_collection.set_self_href(collection_href)
 
     if result_files and not is_cwl:
         try:
@@ -186,70 +187,13 @@ def execute(process_graph, user_profile, dask_profile):
 
             pystac.Item.validate = lambda self: []
 
-            # raster2stac expects a double-nested list when passing xarray Datasets:
-            # outer list = collection items, inner list = files for the same timestamp.
-            Raster2STAC(
-                data=[[ds] for ds in datasets],
-                collection_id=job_id,
-                description=f"openEO batch job results for job {job_id}",
-                collection_url=stac_api_url,
-                output_folder=stac_path,
-                s3_upload=False,
-            ).generate_netcdf_stac()
+        item.set_parent(output_collection)
+        item_href = str(openeo_parameters.user_profile.stac_path / f"{item.id}.json")
+        item.set_self_href(item_href)
 
-            for ds in datasets:
-                ds.close()
+        tmp_asset = Asset(title=item.id, href=str(filepath), roles=["data"])
 
-            # Upload result files to S3 and rewrite STAC item hrefs
-            from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_to_s3, is_s3_configured
-            if is_s3_configured():
-                import glob as _glob
-                for item_json in _glob.glob(f"{stac_path}/items/*.json"):
-                    with open(item_json, "r") as f:
-                        item = json.load(f)
-                    changed = False
-                    for asset in item.get("assets", {}).values():
-                        href = asset.get("href", "")
-                        if href and os.path.isfile(href):
-                            s3_uri = upload_to_s3(href)
-                            if s3_uri != href:
-                                asset["href"] = s3_uri
-                                changed = True
-                                logger.info(f"Uploaded {href} → {s3_uri}")
-                    if changed:
-                        with open(item_json, "w") as f:
-                            json.dump(item, f)
-                        logger.info(f"Patched STAC item hrefs in {item_json}")
-
-            # POST collection to STAC API
-            collection_file = f"{stac_path}/{job_id}.json"
-            if os.path.exists(collection_file):
-                with open(collection_file, "r") as f:
-                    collection_dict = json.load(f)
-                requests.post(stac_api_url, json=collection_dict)
-
-            # POST each item to STAC API
-            items_csv = f"{stac_path}/inline_items.csv"
-            if os.path.exists(items_csv):
-                with open(items_csv, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            item_dict = json.loads(line)
-                            requests.post(
-                                f"{stac_api_url.rstrip('/')}/{job_id}/items",
-                                json=item_dict,
-                            )
-
-        except Exception as e:
-            logger.warning(
-                f"Raster2STAC failed for job {job_id}: {e} — falling back to create_stac_item"
-            )
-            # Fallback: build a minimal STAC collection using our own create_stac_item
-            # Write as a flat JSON file (not pystac's directory tree) because the API
-            # expects STAC/{job_id}.json to be a file, not a directory.
-            try:
-                import pystac
+        output_collection.add_asset(item.id, tmp_asset)
 
                 items = []
                 for filepath in result_files:

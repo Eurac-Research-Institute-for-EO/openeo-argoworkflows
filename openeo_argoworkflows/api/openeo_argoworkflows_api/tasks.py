@@ -1,15 +1,52 @@
-import os
+from copy import deepcopy
+import json
+import logging
+
 from datetime import timedelta
-from hera.workflows import  WorkflowsService
+from hera.workflows import WorkflowsService
 from openeo_fastapi.api.types import Status
 from redis import Redis
 from rq import Queue
 from typing import Any
 
+from openeo_fastapi.client.psql import engine
 from openeo_fastapi.client.psql.engine import modify, get
-from openeo_argoworkflows_api.psql.models import ArgoJob
+from openeo_argoworkflows_api.psql.models import ArgoJob, ExtendedUser
 from openeo_argoworkflows_api.workflows import executor_workflow
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
+
+logger = logging.getLogger(__name__)
+
+settings = ExtendedAppSettings()
+
+
+def _select_dask_profile(
+    user_roles: list,
+    role_mapping: dict,
+    profiles: dict,
+    base_profile: dict,
+) -> dict:
+    """Return a dask profile dict for the given user roles.
+
+    Walks user_roles in order, finds the first hit in role_mapping, then looks
+    up that profile name in profiles and merges it over base_profile.
+    Falls back to role_mapping["default"] when no role matches, then to
+    base_profile unchanged when neither match nor default exists.
+    """
+
+    def _resolve(profile_name: str) -> dict:
+        if profile_name in profiles:
+            return {**base_profile, **profiles[profile_name]}
+        return base_profile
+
+    for role in user_roles:
+        if role in role_mapping:
+            return _resolve(role_mapping[role])
+
+    if "default" in role_mapping:
+        return _resolve(role_mapping["default"])
+
+    return base_profile
 
 
 def _resolve_udps(process_graph: dict, user_id) -> dict:
@@ -20,10 +57,14 @@ def _resolve_udps(process_graph: dict, user_id) -> dict:
 
     process_registry = ProcessRegistry()
     for pid in openeo_processes_dask_slim.specs.__all__:
-        process_registry[("predefined", pid)] = pgProcess(getattr(openeo_processes_dask_slim.specs, pid))
+        process_registry[("predefined", pid)] = pgProcess(
+            getattr(openeo_processes_dask_slim.specs, pid)
+        )
 
     def get_udp_spec(process_id: str, namespace: str) -> dict:
-        udp = get(get_model=UserDefinedProcessGraph, primary_key=[process_id, namespace])
+        udp = get(
+            get_model=UserDefinedProcessGraph, primary_key=[process_id, namespace]
+        )
         return udp.dict()
 
     return resolve_process_graph(
@@ -33,15 +74,12 @@ def _resolve_udps(process_graph: dict, user_id) -> dict:
         namespace=str(user_id),
     )
 
-settings = ExtendedAppSettings()
-q = Queue(
-    connection=Redis(
-    host=settings.REDIS_HOST,
-    port=settings.REDIS_PORT
-))
+
+q = Queue(connection=Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT))
+
 
 def queue_to_submit(job: ArgoJob):
-    """  Function to see if there is space in the pool for another Job. """
+    """Function to see if there is space in the pool for another Job."""
     argo = WorkflowsService(
         host=settings.ARGO_WORKFLOWS_SERVER,
         verify_ssl=False,
@@ -56,9 +94,7 @@ def queue_to_submit(job: ArgoJob):
 
     check_statuses = ("Running", "Pending")
     filtered_workflows = [
-        workflow
-        for workflow in workflows
-        if workflow.status.phase in check_statuses
+        workflow for workflow in workflows if workflow.status.phase in check_statuses
     ]
 
     if len(filtered_workflows) >= settings.ARGO_WORKFLOWS_LIMIT:
@@ -68,40 +104,53 @@ def queue_to_submit(job: ArgoJob):
 
 
 def submit_job(job: ArgoJob):
-    """ Submit the job to argo. """
+    """Submit the job to argo."""
     argo = WorkflowsService(
         host=settings.ARGO_WORKFLOWS_SERVER,
         verify_ssl=False,
         namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
-    )    
+    )
 
     if settings.DASK_GATEWAY_SERVER and settings.OPENEO_EXECUTOR_IMAGE:
-        dask_profile = {
+        base_profile = {
             "GATEWAY_URL": settings.DASK_GATEWAY_SERVER,
             "OPENEO_EXECUTOR_IMAGE": settings.OPENEO_EXECUTOR_IMAGE,
             "WORKER_CORES": settings.DASK_WORKER_CORES,
             "WORKER_MEMORY": settings.DASK_WORKER_MEMORY,
             "WORKER_LIMIT": settings.DASK_WORKER_LIMIT,
-            "CLUSTER_IDLE_TIMEOUT": settings.DASK_CLUSTER_IDLE_TIMEOUT
+            "CLUSTER_IDLE_TIMEOUT": settings.DASK_CLUSTER_IDLE_TIMEOUT,
         }
+        if settings.DASK_PROFILES and settings.DASK_ROLE_PROFILE_MAPPING:
+            user = engine.get(get_model=ExtendedUser, primary_key=job.user_id)
+            user_roles = (user.roles or []) if user else []
+            logger.debug(
+                "Selecting dask profile for job %s: user=%s roles=%s",
+                job.job_id,
+                job.user_id,
+                user_roles,
+            )
+            dask_profile = _select_dask_profile(
+                user_roles,
+                json.loads(settings.DASK_ROLE_PROFILE_MAPPING),
+                json.loads(settings.DASK_PROFILES),
+                base_profile,
+            )
+        else:
+            dask_profile = base_profile
     else:
-        dask_profile = {
-            "LOCAL": True
-        }
+        dask_profile = {"LOCAL": True}
 
     user_profile = {
         "OPENEO_JOB_ID": str(job.job_id),
         "OPENEO_USER_ID": str(job.user_id),
-        "OPENEO_USER_WORKSPACE": str(settings.OPENEO_WORKSPACE_ROOT / str(job.user_id) / str(job.job_id))
+        "OPENEO_USER_WORKSPACE": str(
+            settings.OPENEO_WORKSPACE_ROOT / str(job.user_id) / str(job.job_id)
+        ),
     }
 
-    # Pass S3 credentials to executor pod if configured
-    for s3_var in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
-        val = os.environ.get(s3_var)
-        if val:
-            user_profile[s3_var] = val
-    process_graph = _resolve_udps(job.process.process_graph, job.user_id)
+    process_graph = _resolve_udps(deepcopy(job.process.process_graph), job.user_id)
+
     workflow = executor_workflow(argo, process_graph, dask_profile, user_profile)
 
     response = workflow.create()
@@ -124,11 +173,7 @@ def _detect_oom(workflow) -> bool:
 
 
 def poll_job_status(job: ArgoJob, metadata: Any):
-    """Poll Argo for workflow status and sync to DB."""
-    existing = get(get_model=ArgoJob, primary_key=job.job_id)
-    if not existing:
-        return
-
+    """Submit the job to argo."""
     argo = WorkflowsService(
         host=settings.ARGO_WORKFLOWS_SERVER,
         verify_ssl=False,
@@ -136,35 +181,13 @@ def poll_job_status(job: ArgoJob, metadata: Any):
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
     )
 
-    try:
-        workflow = argo.get_workflow(
-            name=metadata.name,
-            namespace=metadata.namespace
-        )
-    except Exception:
-        existing.status = Status.error
-        existing.message = "Workflow could not be found. It may have been deleted or expired."
-        modify(existing)
-        return
+    workflow = argo.get_workflow(name=metadata.name, namespace=metadata.namespace)
 
-    phase = getattr(workflow.status, "phase", None)
-
-    if phase == "Succeeded":
-        existing.status = Status.finished
-        existing.message = None
-        modify(existing)
-    elif phase in ("Failed", "Error"):
-        if _detect_oom(workflow):
-            existing.message = (
-                "Job exceeded available memory. "
-                "Try reducing the temporal extent or spatial area and retry."
-            )
-        else:
-            existing.message = "Job failed. Please check the logs for details."
-        existing.status = Status.error
-        modify(existing)
-    elif phase in ("Running", "Pending"):
-        return q.enqueue(poll_job_status, job, metadata)
-    else:
-        # Unknown or None phase — re-enqueue to retry
+    if workflow.status.phase == "Succeeded":
+        job.status = Status.finished
+        modify(job)
+    elif workflow.status.phase in ("Failed", "Error"):
+        job.status = Status.error
+        modify(job)
+    elif workflow.status.phase in ("Running", "Pending"):
         return q.enqueue(poll_job_status, job, metadata)
