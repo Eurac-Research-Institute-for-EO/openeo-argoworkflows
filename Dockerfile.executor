@@ -15,22 +15,10 @@ RUN python3 -m venv $VIRTUAL_ENV && \
 
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ git && rm -rf /var/lib/apt/lists/* && \
-    git config --global url."https://github.com/".insteadOf "git@github.com:"
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/* \
+    && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-# Install GDAL Python bindings matching system libgdal version.
-# xcube-eopf (from EURAC processes-dask) requires gdal, but the PyPI version
-# must match the system libgdal headers exactly.
-RUN GDAL_VERSION=$(gdal-config --version) && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir "gdal==${GDAL_VERSION}"
-
-# Export dependencies from poetry lock, exclude gdal (already installed from system),
-# then install via pip. This avoids poetry trying to build gdal 3.12.2 against
-# system libgdal 3.6.2 headers which causes a version mismatch build failure.
-RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
-    grep -v "^gdal==" /tmp/requirements.txt > /tmp/requirements-no-gdal.txt && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-no-gdal.txt && \
-    rm /tmp/requirements.txt /tmp/requirements-no-gdal.txt
+RUN poetry install --only main
 
 # Create the openeo_executor CLI entry point script directly.
 # Avoids pip install . which triggers poetry-core's path validation bug
@@ -40,14 +28,10 @@ RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_a
 
 # Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
-RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs "numpy<2" \
+RUN $VIRTUAL_ENV/bin/pip install dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs "numpy<2" \
         pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray zarr requests && \
     $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
 
-# Install CWL execution dependencies (calrissian for K8s CWL runner, cwltool for validation)
-RUN $VIRTUAL_ENV/bin/pip install calrissian cwltool
-
-# Verify the entry point exists
 RUN which openeo_executor
 
 ########################################################################################################################
@@ -61,7 +45,7 @@ WORKDIR /opt/openeo_argoworkflows_executor
 COPY --from=base --chown=${USER_ID}:${GROUP_ID} /opt/openeo_argoworkflows_executor/.venv /opt/openeo_argoworkflows_executor/.venv
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows/executor/openeo_argoworkflows_executor /opt/openeo_argoworkflows_executor
 
-RUN apt-get update && apt-get install -y libexpat1 libgdal32 nodejs && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libexpat1 nodejs && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/local/bin/python /opt/openeo_argoworkflows_executor/.venv/bin/python \
     && ln -sf /usr/local/bin/python3 /opt/openeo_argoworkflows_executor/.venv/bin/python3 \
