@@ -42,7 +42,7 @@ RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_a
 # Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
 RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py kerchunk netcdf4 numcodecs "numpy<2" \
         pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray zarr requests && \
-    $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
+    $VIRTUAL_ENV/bin/pip install --no-deps "raster2stac==2025.12.1"
 
 # Install CWL execution dependencies (calrissian for K8s CWL runner, cwltool for validation)
 RUN $VIRTUAL_ENV/bin/pip install calrissian cwltool
