@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_RAM = "16G"
 DEFAULT_MAX_CORES = 8
 
+# Issue #127: CWL inputs that can be auto-filled from the openEO execution
+# environment. Only injected when the CWL document actually declares an input
+# of that name AND the user did not supply it in `context`.
+_ENV_AUTO_INPUTS = {
+    "job_id": "OPENEO_JOB_ID",
+    "user_id": "OPENEO_USER_ID",
+}
+
 
 def _is_url(value: str) -> bool:
     """Check if a string looks like a URL."""
@@ -104,6 +112,113 @@ def _validate_cwl(cwl_path: Path) -> dict:
             errors.append(line.strip())
 
     return {"valid": False, "errors": errors}
+
+def _load_cwl_doc(cwl_path: Path) -> dict:
+    """Load a CWL file as a dict, resolving $graph packages to the run entry.
+
+    For a $graph package, returns the tool/workflow the executor actually runs
+    (the entry whose id is 'main' / '#main' — see _resolve_cwl_arg), falling
+    back to the first CommandLineTool/Workflow, then the first entry. Returns
+    {} if the document can't be parsed into a mapping.
+    """
+    import yaml
+
+    doc = yaml.safe_load(cwl_path.read_text())
+    if not isinstance(doc, dict):
+        return {}
+    if "$graph" in doc:
+        graph = doc.get("$graph") or []
+        entries = [e for e in graph if isinstance(e, dict)]
+        for entry in entries:
+            if str(entry.get("id", "")).lstrip("#") == "main":
+                return entry
+        for entry in entries:
+            if entry.get("class") in ("CommandLineTool", "Workflow", "ExpressionTool"):
+                return entry
+        return entries[0] if entries else {}
+    return doc
+
+
+def _input_is_optional(type_val) -> bool:
+    """Return True if a CWL input type marks the input as optional/nullable.
+
+    Optional forms: a 'type?' string shorthand, or a union list containing
+    'null' (e.g. ['null', 'string']).
+    """
+    if isinstance(type_val, str):
+        return type_val.endswith("?")
+    if isinstance(type_val, list):
+        return "null" in type_val
+    return False
+
+
+def _parse_cwl_inputs(cwl_doc: dict) -> dict:
+    """Parse a CWL `inputs:` block into a normalised dict (issue #127).
+
+    Handles both the mapping form ({name: type | {type, default}}) and the
+    list form ([{id, type, default}, ...]). Returns:
+        {name: {type, default, has_default, optional, required}}
+    An input is `required` when it is neither optional (nullable / '?' / union
+    with null) nor has a default.
+    """
+    inputs_block = (cwl_doc or {}).get("inputs")
+    if isinstance(inputs_block, dict):
+        items = list(inputs_block.items())
+    elif isinstance(inputs_block, list):
+        items = [(e.get("id"), e) for e in inputs_block if isinstance(e, dict)]
+    else:
+        return {}
+
+    result = {}
+    for name, spec in items:
+        if not name:
+            continue
+        if isinstance(spec, dict):
+            type_val = spec.get("type")
+            has_default = "default" in spec
+            default = spec.get("default")
+        else:
+            type_val = spec
+            has_default = False
+            default = None
+        optional = _input_is_optional(type_val) or has_default
+        result[name] = {
+            "type": type_val,
+            "default": default,
+            "has_default": has_default,
+            "optional": optional,
+            "required": not optional,
+        }
+    return result
+
+
+def _auto_wire_inputs(cwl_inputs: dict, inputs: dict) -> dict:
+    """Fill declared CWL inputs from the openEO execution env (issue #127).
+
+    Declaration-gated: only inputs the CWL actually declares are touched.
+    User-supplied `context` values always win, and env vars that are absent
+    are skipped. Returns a new dict; the caller's `inputs` is not mutated.
+    """
+    wired = dict(inputs)
+    for name, env_key in _ENV_AUTO_INPUTS.items():
+        if name not in cwl_inputs or name in wired:
+            continue
+        value = os.environ.get(env_key)
+        if value is None:
+            continue
+        wired[name] = value
+        logger.info(f"Auto-wired CWL input '{name}' from {env_key}")
+    return wired
+
+
+def _missing_required_inputs(cwl_inputs: dict, inputs: dict) -> list:
+    """Return required CWL inputs (no default, not optional) still unprovided."""
+    return [
+        name
+        for name, spec in cwl_inputs.items()
+        if spec.get("required") and name not in inputs
+    ]
+
 
 def _find_stac_root(directory: Path) -> Optional[Path]:
     """Search for a STAC root file in the calrissian output directory.
@@ -233,6 +348,23 @@ def run_cwl(
 
         if validate_only:
             return validation
+
+        # Issue #127: parse the CWL inputs block and auto-wire known openEO
+        # context values (job_id, user_id) for inputs the document declares but
+        # the user did not supply. Declaration-gated and non-fatal — a parse
+        # failure must never break an otherwise-valid job.
+        try:
+            cwl_inputs = _parse_cwl_inputs(_load_cwl_doc(cwl_path))
+            if cwl_inputs:
+                inputs = _auto_wire_inputs(cwl_inputs, inputs)
+                missing = _missing_required_inputs(cwl_inputs, inputs)
+                if missing:
+                    logger.warning(
+                        "CWL inputs required but not provided (no default): "
+                        f"{missing}. Add them to the run_udf 'context'."
+                    )
+        except Exception as e:
+            logger.warning(f"Could not parse CWL inputs for auto-wiring (#127): {e}")
 
         # Write inputs file
         inputs_path = _write_inputs(inputs, work_dir)
