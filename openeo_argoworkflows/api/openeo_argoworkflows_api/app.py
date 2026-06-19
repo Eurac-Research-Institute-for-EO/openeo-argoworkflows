@@ -2,10 +2,12 @@
 import json
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 
 from openeo_fastapi.client.psql.engine import get
@@ -145,6 +147,46 @@ def s3_proxy_download(job_id: uuid.UUID, filename: str):
     return StreamingResponse(body.iter_chunks(), media_type=content_type, headers=headers)
 
 
+class CwlInspectRequest(BaseModel):
+    """Request body for the CWL input-schema endpoint (#129).
+
+    Provide exactly one of `url` (fetched over http/https) or `cwl` (inline doc).
+    """
+    url: Optional[str] = None
+    cwl: Optional[str] = None
+
+
+def cwl_inputs_inspect(body: CwlInspectRequest):
+    """Return a CWL document's input schema for the Web Editor (#129).
+
+    Parses the `inputs:` block and flags inputs the executor auto-fills
+    (`job_id`/`user_id`/`openeo_data`, see #127) so the editor can render a
+    `context` form and hide the auto-filled fields.
+    """
+    from openeo_argoworkflows_api import cwl_inputs as _cwl_inputs
+
+    has_url, has_cwl = bool(body.url), bool(body.cwl)
+    if has_url == has_cwl:
+        raise HTTPException(
+            status_code=400, detail="Provide exactly one of 'url' or 'cwl'."
+        )
+
+    try:
+        text = _cwl_inputs.fetch_cwl_text(body.url) if has_url else body.cwl
+        doc = _cwl_inputs.load_cwl_doc(text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch/parse CWL: {e}")
+
+    if not doc:
+        raise HTTPException(
+            status_code=400, detail="CWL document is empty or not a valid mapping."
+        )
+
+    return {"inputs": _cwl_inputs.build_input_schema(doc)}
+
+
 def redirect_wellknown():
     return RedirectResponse("/.well-known/openeo")
 
@@ -174,6 +216,14 @@ api.app.router.add_api_route(
     response_model=None,
     methods=["GET", "HEAD"],
     endpoint=s3_proxy_download,
+)
+
+api.app.router.add_api_route(
+    name="cwl_inputs_inspect",
+    path=f"{client.settings.OPENEO_PREFIX}/cwl/inputs",
+    response_model=None,
+    methods=["POST"],
+    endpoint=cwl_inputs_inspect,
 )
 
 app = api.app
