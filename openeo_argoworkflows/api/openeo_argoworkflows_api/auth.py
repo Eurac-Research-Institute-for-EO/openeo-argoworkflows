@@ -249,6 +249,7 @@ def get_credentials_oidc() -> Response:
                             "https://editor.openeo.cloud",
                             "https://editor.openeo.org",
                             "http://localhost:1410/",
+                            "https://openeo.eurac.edu/editor/",
                         ],
                         grant_types=[
                             GrantType.authorization_code_pkce,
