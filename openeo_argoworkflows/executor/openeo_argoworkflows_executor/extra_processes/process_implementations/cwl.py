@@ -513,6 +513,21 @@ def run_cwl(
                     with open(item_file, "w") as f:
                         json.dump(item_dict, f, indent=2)
 
+            # Upload result assets to S3 and rewrite the STAC item hrefs to
+            # s3:// URIs — parity with the regular save_result path so CWL/EOAP
+            # outputs land in the object store too. No-op if S3 isn't configured;
+            # individual upload failures fall back to the local href.
+            try:
+                from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import (
+                    upload_stac_item_assets,
+                )
+
+                n_uploaded = upload_stac_item_assets(items_dir)
+                if n_uploaded:
+                    logger.info(f"Uploaded {n_uploaded} CWL output asset(s) to S3")
+            except Exception as e:
+                logger.warning(f"S3 upload of CWL outputs skipped due to error: {e}")
+
             logger.info(f"CWL produced STAC root ({stac_root.name}) - restructured to {stac_path}")
             collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
         else:

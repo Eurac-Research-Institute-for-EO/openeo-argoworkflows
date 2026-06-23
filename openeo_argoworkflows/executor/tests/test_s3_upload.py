@@ -10,6 +10,7 @@ When: upload_to_s3 runs
 Then: local file path is returned unchanged (backward compatible)
 """
 import importlib.util
+import json
 import os
 import pathlib
 import pytest
@@ -140,3 +141,57 @@ def test_upload_to_s3_key_structure(tmp_path, monkeypatch):
 
     s3_key = mock_client.upload_file.call_args[0][2]
     assert s3_key == "user-123/job-456/abc123.nc"
+
+
+# --- upload_stac_item_assets: rewrite local STAC item hrefs to S3 (CWL path) ---
+
+def _make_item(tmp_path, href, name="item1.json"):
+    items = tmp_path / "items"
+    items.mkdir(exist_ok=True)
+    p = items / name
+    p.write_text(json.dumps({"type": "Feature", "assets": {"data": {"href": href}}}))
+    return items, p
+
+
+def test_upload_stac_item_assets_rewrites_local_href_to_s3(tmp_path, monkeypatch):
+    _make_env(monkeypatch)
+    tif = tmp_path / "coh.tif"
+    tif.write_bytes(b"x")
+    items, item_json = _make_item(tmp_path, str(tif))
+
+    mod = _load_s3_module()
+    with patch.object(mod, "upload_to_s3", return_value="s3://eo-public/u/j/coh.tif") as up:
+        n = mod.upload_stac_item_assets(str(items))
+
+    assert n == 1
+    up.assert_called_once_with(str(tif))
+    saved = json.loads(item_json.read_text())
+    assert saved["assets"]["data"]["href"] == "s3://eo-public/u/j/coh.tif"
+
+
+def test_upload_stac_item_assets_noop_when_not_configured(tmp_path):
+    for var in ("S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"):
+        os.environ.pop(var, None)
+    tif = tmp_path / "coh.tif"
+    tif.write_bytes(b"x")
+    items, item_json = _make_item(tmp_path, str(tif))
+
+    mod = _load_s3_module()
+    with patch.object(mod, "upload_to_s3") as up:
+        n = mod.upload_stac_item_assets(str(items))
+
+    assert n == 0
+    up.assert_not_called()
+    assert json.loads(item_json.read_text())["assets"]["data"]["href"] == str(tif)
+
+
+def test_upload_stac_item_assets_skips_non_local_href(tmp_path, monkeypatch):
+    _make_env(monkeypatch)
+    items, item_json = _make_item(tmp_path, "s3://already/there.tif")
+
+    mod = _load_s3_module()
+    with patch.object(mod, "upload_to_s3") as up:
+        n = mod.upload_stac_item_assets(str(items))
+
+    up.assert_not_called()
+    assert n == 0
