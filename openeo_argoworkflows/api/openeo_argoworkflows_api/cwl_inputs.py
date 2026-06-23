@@ -70,11 +70,53 @@ def _input_is_optional(type_val) -> bool:
     return False
 
 
+def _extract_enum_symbols(type_val):
+    """Return the list of enum symbols if `type_val` is (or wraps) a CWL enum.
+
+    Handles an inline enum record ({type: enum, symbols: [...]}), an enum nested
+    under a `type` key ({type: {type: enum, symbols: [...]}}), and a union list
+    ([null, {type: enum, ...}]). Returns None when there is no enum.
+    """
+    members = type_val if isinstance(type_val, list) else [type_val]
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        if member.get("type") == "enum" and isinstance(member.get("symbols"), list):
+            return list(member["symbols"])
+        inner = member.get("type")
+        if isinstance(inner, (dict, list)):
+            nested = _extract_enum_symbols(inner)
+            if nested is not None:
+                return nested
+    return None
+
+
+def _type_name(type_val):
+    """Best-effort short type name for display (e.g. 'enum', 'string', 'int')."""
+    if isinstance(type_val, list):
+        non_null = [t for t in type_val if t != "null"]
+        if len(non_null) == 1:
+            return _type_name(non_null[0])
+        return "union" if non_null else "null"
+    if isinstance(type_val, dict):
+        inner = type_val.get("type")
+        if inner == "enum":
+            return "enum"
+        if isinstance(inner, (dict, list)):
+            return _type_name(inner)
+        return inner
+    if isinstance(type_val, str):
+        return type_val.rstrip("?")
+    return None
+
+
 def parse_cwl_inputs(cwl_doc: dict) -> dict:
     """Normalise a CWL `inputs:` block (mapping or list form) to:
 
-        {name: {type, default, has_default, optional, required}}
+        {name: {type, enum, doc, default, has_default, optional, required}}
 
+    `enum` is the list of allowed values for enum-typed inputs (else None) and
+    `doc` is the input's human-readable description (else None).
     Required = neither optional (nullable / '?' / null-union) nor defaulted.
     """
     inputs_block = (cwl_doc or {}).get("inputs")
@@ -89,8 +131,17 @@ def parse_cwl_inputs(cwl_doc: dict) -> dict:
     for name, spec in items:
         if not name:
             continue
+        doc = None
         if isinstance(spec, dict):
-            type_val = spec.get("type")
+            doc = spec.get("doc")
+            if spec.get("type") == "enum" and "symbols" in spec:
+                # Inline enum type record written directly as the input value.
+                type_val = spec
+            elif "type" in spec:
+                # InputParameter wrapper: the real type is under `type`.
+                type_val = spec.get("type")
+            else:
+                type_val = spec
             has_default = "default" in spec
             default = spec.get("default")
         else:
@@ -99,7 +150,9 @@ def parse_cwl_inputs(cwl_doc: dict) -> dict:
             default = None
         optional = _input_is_optional(type_val) or has_default
         result[name] = {
-            "type": type_val,
+            "type": _type_name(type_val),
+            "enum": _extract_enum_symbols(type_val),
+            "doc": doc,
             "default": default,
             "has_default": has_default,
             "optional": optional,
