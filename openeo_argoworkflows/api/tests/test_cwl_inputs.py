@@ -71,6 +71,75 @@ class TestParser:
         assert schema["job_id"]["autofilled"] is True
         assert schema["aoi"]["autofilled"] is False
 
+
+class TestEnumAndDoc:
+    """Surface CWL enum `symbols` (allowed values) and `doc` (description)."""
+
+    def test_inline_enum_record(self):
+        # polarization: {type: enum, symbols: [VV, VH]}
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {"inputs": {"polarization": {"type": "enum", "symbols": ["VV", "VH"]}}}
+        )
+        assert parsed["polarization"]["enum"] == ["VV", "VH"]
+        assert parsed["polarization"]["type"] == "enum"
+        assert parsed["polarization"]["required"] is True
+
+    def test_enum_as_single_member_union_list(self):
+        # polarization:\n  - type: enum\n    symbols: [VV, VH]
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {"inputs": {"polarization": [{"type": "enum", "symbols": ["VV", "VH"]}]}}
+        )
+        assert parsed["polarization"]["enum"] == ["VV", "VH"]
+
+    def test_nested_type_with_doc(self):
+        # sub_swath:\n  type: {type: enum, symbols: [...]}\n  doc: "..."
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {
+                "inputs": {
+                    "sub_swath": {
+                        "type": {"type": "enum", "symbols": ["IW1", "IW2", "IW3"]},
+                        "doc": "Sub-swath identifier",
+                    }
+                }
+            }
+        )
+        assert parsed["sub_swath"]["enum"] == ["IW1", "IW2", "IW3"]
+        assert parsed["sub_swath"]["doc"] == "Sub-swath identifier"
+        assert parsed["sub_swath"]["type"] == "enum"
+
+    def test_doc_on_plain_input(self):
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {"inputs": {"aoi": {"type": "string", "doc": "Area of interest (WKT)"}}}
+        )
+        assert parsed["aoi"]["doc"] == "Area of interest (WKT)"
+        assert parsed["aoi"]["type"] == "string"
+        assert parsed["aoi"]["enum"] is None
+
+    def test_nullable_enum_is_optional_and_keeps_symbols(self):
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {"inputs": {"pol": {"type": ["null", {"type": "enum", "symbols": ["VV"]}]}}}
+        )
+        assert parsed["pol"]["enum"] == ["VV"]
+        assert parsed["pol"]["optional"] is True
+
+    def test_non_enum_has_null_enum_and_no_doc(self):
+        parsed = cwl_inputs.parse_cwl_inputs({"inputs": {"x": "string"}})
+        assert parsed["x"]["enum"] is None
+        assert parsed["x"]["doc"] is None
+
+    def test_schema_endpoint_shape_includes_enum_and_doc(self):
+        # build_input_schema must carry enum/doc through alongside autofilled
+        doc = cwl_inputs.load_cwl_doc(
+            "class: CommandLineTool\ncwlVersion: v1.2\nbaseCommand: echo\n"
+            "inputs:\n"
+            "  sub_swath:\n    type:\n      type: enum\n      symbols: [IW1, IW2]\n    doc: pick one\n"
+            "outputs: {}\n"
+        )
+        schema = cwl_inputs.build_input_schema(doc)
+        assert schema["sub_swath"]["enum"] == ["IW1", "IW2"]
+        assert schema["sub_swath"]["doc"] == "pick one"
+        assert schema["sub_swath"]["autofilled"] is False
+
     def test_fetch_rejects_non_http_scheme(self):
         import pytest
 
