@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - eurac-main
+      - dev
     paths:
       - 'Dockerfile.executor'
       - 'openeo_argoworkflows/executor/openeo_argoworkflows_executor/**'
@@ -41,8 +42,10 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=sha,prefix=
-            type=raw,value=latest
-            type=raw,value=eurac-main
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/eurac-main' }}
+            type=raw,value=eurac-main,enable=${{ github.ref == 'refs/heads/eurac-main' }}
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/eurac-main' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
