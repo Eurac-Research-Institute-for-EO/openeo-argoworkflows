@@ -201,25 +201,10 @@ def execute(process_graph, user_profile, dask_profile):
                 ds.close()
 
             # Upload result files to S3 and rewrite STAC item hrefs
-            from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_to_s3, is_s3_configured
-            if is_s3_configured():
-                import glob as _glob
-                for item_json in _glob.glob(f"{stac_path}/items/*.json"):
-                    with open(item_json, "r") as f:
-                        item = json.load(f)
-                    changed = False
-                    for asset in item.get("assets", {}).values():
-                        href = asset.get("href", "")
-                        if href and os.path.isfile(href):
-                            s3_uri = upload_to_s3(href)
-                            if s3_uri != href:
-                                asset["href"] = s3_uri
-                                changed = True
-                                logger.info(f"Uploaded {href} → {s3_uri}")
-                    if changed:
-                        with open(item_json, "w") as f:
-                            json.dump(item, f)
-                        logger.info(f"Patched STAC item hrefs in {item_json}")
+            from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_stac_item_assets
+            n_uploaded = upload_stac_item_assets(f"{stac_path}/items")
+            if n_uploaded:
+                logger.info(f"Uploaded {n_uploaded} result asset(s) to S3")
 
             # POST collection to STAC API
             collection_file = f"{stac_path}/{job_id}.json"
