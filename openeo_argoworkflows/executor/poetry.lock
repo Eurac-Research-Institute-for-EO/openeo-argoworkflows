@@ -3558,8 +3558,8 @@ ml = ["xgboost (>=1.5.1,<2.1.4)"]
 [package.source]
 type = "git"
 url = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git"
-reference = "v2025.5.1-eurac.1"
-resolved_reference = "16af5d9999f44baf5341dd966a3cd0a0b5135309"
+reference = "v2025.5.1-eurac.2"
+resolved_reference = "de100eeae45f85304af6511f612903a612281867"
 
 [[package]]
 name = "oschmod"
@@ -6670,4 +6670,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "0e5143beea8fda778f6a81b942f96874efa0fd23854e7562fc84aa7d49f3c796"
+content-hash = "2e52035ed7ce2ccc4db9f6e67a915b37e678663336b50c0448f7d698a398d199"
