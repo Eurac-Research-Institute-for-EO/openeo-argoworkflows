@@ -156,6 +156,7 @@ class OpenEOCore:
                                 "http://10.8.244.73:8080/",
                                 "http://localhost:8080/",
                                 "https://openeo.eurac.edu/editor/",
+                                "https://dev.openeo.eurac.edu/editor/",
                             ],
                             grant_types=[
                                 GrantType.authorization_code_pkce,
