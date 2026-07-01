@@ -86,9 +86,19 @@ def execute(process_graph, user_profile, dask_profile):
     if is_cwl:
         logger.info("CWL job detected — skipping Dask cluster setup")
     elif openeo_parameters.dask_profile.LOCAL:
-        from dask.distributed import worker_client
+        # Gateway-less: run a Dask cluster inside the executor pod. worker_client()
+        # only works from inside an existing worker, so create a real LocalCluster
+        # sized from the profile and connect a Client (which becomes the default
+        # for the compute below). dask_cluster stays None so the gateway-specific
+        # teardown (which references `gateway`) is skipped.
+        from dask.distributed import Client, LocalCluster
 
-        client = worker_client()
+        local_cluster = LocalCluster(
+            n_workers=1,
+            threads_per_worker=int(openeo_parameters.dask_profile.WORKER_CORES),
+            memory_limit=f"{int(openeo_parameters.dask_profile.WORKER_MEMORY)}GiB",
+        )
+        client = Client(local_cluster)
     else:
         gateway = Gateway(openeo_parameters.dask_profile.GATEWAY_URL)
         options = gateway.cluster_options()
