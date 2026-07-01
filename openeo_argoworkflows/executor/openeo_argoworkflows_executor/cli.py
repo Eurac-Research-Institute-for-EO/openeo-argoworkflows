@@ -93,8 +93,13 @@ def execute(process_graph, user_profile, dask_profile):
         # teardown (which references `gateway`) is skipped.
         from dask.distributed import Client, LocalCluster
 
+        # processes=False -> single in-process (threaded) worker. The executor CLI
+        # runs at import time without a `if __name__ == '__main__'` guard, so a
+        # Nanny/spawn worker fails with "attempt to start a new process before the
+        # current process has finished its bootstrapping phase". Threaded avoids it.
         local_cluster = LocalCluster(
             n_workers=1,
+            processes=False,
             threads_per_worker=int(openeo_parameters.dask_profile.WORKER_CORES),
             memory_limit=f"{int(openeo_parameters.dask_profile.WORKER_MEMORY)}GiB",
         )
