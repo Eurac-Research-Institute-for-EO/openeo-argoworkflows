@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
+from openeo_argoworkflows_executor.http import post_json
 
 logger = logging.getLogger(__name__)
 
@@ -130,9 +130,9 @@ def create_cwl_stac(
 
     # POST to STAC API
     try:
-        requests.post(stac_api_url, json=collection)
+        post_json(stac_api_url, collection)
         for item in items:
-            requests.post(f"{stac_api_url.rstrip('/')}/{job_id}/items", json=item)
+            post_json(f"{stac_api_url.rstrip('/')}/{job_id}/items", item)
         logger.info(f"Published CWL STAC to {stac_api_url}")
     except Exception as e:
         logger.warning(f"Failed to publish CWL STAC to API: {e}")
