@@ -15,15 +15,20 @@ on:
         required: true
         default: ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:dedl-eurac
       dedl_package_ref:
-        description: Git ref for openeo-processes-dedl-cube-load
+        description: Git ref or SHA for openeo-processes-dedl-cube-load
         required: true
         default: main
+      slim_package_ref:
+        description: Git ref or SHA for Eurac openeo-processes-dask-slim
+        required: true
+        default: dev_remodel
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/openeo-argoworkflows-executor-dedl-eurac
   BASE_EXECUTOR_IMAGE: ${{ inputs.base_executor_image || 'ghcr.io/eurac-research-institute-for-eo/openeo-argoworkflows-executor:dedl-eurac' }}
   DEDL_PACKAGE_REF: ${{ inputs.dedl_package_ref || 'main' }}
+  SLIM_PACKAGE_REF: ${{ inputs.slim_package_ref || 'dev_remodel' }}
   IS_REF_BRANCH: ${{ github.ref_name == 'dedl-eurac' }}
 
 jobs:
@@ -44,6 +49,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve openeo-processes-dedl-cube-load ref
+        id: dedl
+        env:
+          EUMETSAT_GITLAB_TOKEN: ${{ secrets.EUMETSAT_GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ref="${DEDL_PACKAGE_REF}"
+          if [ "$ref" = "main" ]; then
+            ref="$(git \
+              -c url."https://oauth2:${EUMETSAT_GITLAB_TOKEN}@gitlab.eumetsat.int/".insteadOf="https://gitlab.eumetsat.int/" \
+              ls-remote https://gitlab.eumetsat.int/dedl-cube/openeo-processes-dedl-cube-load.git refs/heads/main \
+              | awk '{print $1}')"
+          fi
+          if [ -z "$ref" ]; then
+            echo "Could not resolve openeo-processes-dedl-cube-load ref" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve openeo-processes-dask-slim ref
+        id: slim
+        run: |
+          set -euo pipefail
+          ref="${SLIM_PACKAGE_REF}"
+          if [ "$ref" = "dev_remodel" ]; then
+            ref="$(git ls-remote https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask-slim.git refs/heads/dev_remodel | awk '{print $1}')"
+          fi
+          if [ -z "$ref" ]; then
+            echo "Could not resolve openeo-processes-dask-slim ref" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -61,7 +99,8 @@ jobs:
           push: true
           build-args: |
             BASE_EXECUTOR_IMAGE=${{ env.BASE_EXECUTOR_IMAGE }}
-            DEDL_PACKAGE_REF=${{ env.DEDL_PACKAGE_REF }}
+            DEDL_PACKAGE_REF=${{ steps.dedl.outputs.ref }}
+            SLIM_PACKAGE_REF=${{ steps.slim.outputs.ref }}
           secrets: |
             eumetsat_gitlab_token=${{ secrets.EUMETSAT_GITLAB_TOKEN }}
           tags: ${{ steps.meta.outputs.tags }}

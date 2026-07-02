@@ -7,6 +7,7 @@ FROM ${BASE_EXECUTOR_IMAGE}
 USER root
 
 ARG DEDL_PACKAGE_REF=main
+ARG SLIM_PACKAGE_REF=dev_remodel
 ARG USER_ID=1000
 
 RUN apt-get update \
@@ -25,6 +26,22 @@ RUN --mount=type=secret,id=eumetsat_gitlab_token \
     GIT_CONFIG_VALUE_2="ssh://git@github.com/" \
         /opt/openeo_argoworkflows_executor/.venv/bin/python -m pip install --no-cache-dir \
             "openeo-processes-dedl-cube-load @ git+https://gitlab.eumetsat.int/dedl-cube/openeo-processes-dedl-cube-load.git@${DEDL_PACKAGE_REF}"
+
+RUN /opt/openeo_argoworkflows_executor/.venv/bin/python -m pip install --no-cache-dir --force-reinstall --no-deps \
+        "openeo-processes-dask-slim[implementations] @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask-slim.git@${SLIM_PACKAGE_REF}"
+
+RUN DEDL_DIRECT_URL="$(
+        /opt/openeo_argoworkflows_executor/.venv/bin/python -c "import importlib.metadata as md; print(md.distribution('openeo-processes-dedl-cube-load').read_text('direct_url.json') or '')"
+    )" \
+    && SLIM_DIRECT_URL="$(
+        /opt/openeo_argoworkflows_executor/.venv/bin/python -c "import importlib.metadata as md; print(md.distribution('openeo-processes-dask-slim').read_text('direct_url.json') or '')"
+    )" \
+    && echo "${DEDL_DIRECT_URL}" \
+    && echo "${SLIM_DIRECT_URL}" \
+    && echo "${DEDL_DIRECT_URL}" | grep -q "gitlab.eumetsat.int/dedl-cube/openeo-processes-dedl-cube-load" \
+    && echo "${DEDL_DIRECT_URL}" | grep -q "${DEDL_PACKAGE_REF}" \
+    && echo "${SLIM_DIRECT_URL}" | grep -q "github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask-slim" \
+    && echo "${SLIM_DIRECT_URL}" | grep -q "${SLIM_PACKAGE_REF}"
 
 COPY ./openeo_argoworkflows/executor/openeo_argoworkflows_executor/executor.py \
     /opt/openeo_argoworkflows_executor/executor.py
