@@ -1,8 +1,6 @@
 import logging
 
 import click
-import fsspec
-from openeo_argoworkflows_executor.executor import _is_cwl_job
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +9,29 @@ logger = logging.getLogger(__name__)
 def cli():
     """Defining group for executor CLI."""
     pass
+
+
+def _teardown_cluster(dask_cluster, gateway):
+    """Best-effort shutdown of a gateway Dask cluster. Never raises.
+
+    Runs in a finally (#144): a failed job used to skip shutdown entirely,
+    leaking scheduler + worker pods until CLUSTER_IDLE_TIMEOUT. Swallows all
+    errors so teardown can't mask the job's real exception.
+    """
+    if not dask_cluster:
+        return
+    try:
+        # Can't assume the same cluster is running post process graph execution
+        # due to sub workflows processing. If it was closed, check for a new one!
+        if dask_cluster.status == "closed" and gateway is not None:
+            cluster_list = gateway.list_clusters()
+            if cluster_list:
+                dask_cluster = gateway.connect(cluster_list[0].name)
+
+        # Can call shutdown on previously closed clusters.
+        dask_cluster.shutdown()
+    except Exception:
+        logger.warning("Failed to shut down Dask gateway cluster", exc_info=True)
 
 
 @click.command()
@@ -38,6 +59,7 @@ def execute(process_graph, user_profile, dask_profile):
     import json
     import os
 
+    import fsspec
     import openeo_processes_dask
     from dask_gateway import Gateway
     from openeo_argoworkflows_executor.executor import _is_cwl_job, execute
@@ -83,6 +105,7 @@ def execute(process_graph, user_profile, dask_profile):
 
     # CWL jobs don't need a Dask cluster — skip cluster setup entirely
     dask_cluster = None
+    gateway = None
     if is_cwl:
         logger.info("CWL job detected — skipping Dask cluster setup")
     elif openeo_parameters.dask_profile.LOCAL:
@@ -131,18 +154,12 @@ def execute(process_graph, user_profile, dask_profile):
     parsed_graph = OpenEOProcessGraph(pg_data=openeo_parameters.process_graph)
     is_cwl = _is_cwl_job(parsed_graph.pg_data)
 
-    execute(parsed_graph=parsed_graph)
-
-    # Can't assume the same cluster is running post process graph execution due to sub workflows processing.
-    # If the previous cluster was closed, check for a new one!
-    if dask_cluster:
-        if dask_cluster.status == "closed":
-            cluster_list = gateway.list_clusters()
-            if cluster_list:
-                dask_cluster = gateway.connect(cluster_list[0].name)
-
-        # Can call shutdown on previously closed clusters.
-        dask_cluster.shutdown()
+    try:
+        execute(parsed_graph=parsed_graph)
+    finally:
+        # Shut the gateway cluster down even when the job fails — otherwise the
+        # scheduler + worker pods leak until CLUSTER_IDLE_TIMEOUT (#144).
+        _teardown_cluster(dask_cluster, gateway)
 
     import json
 
