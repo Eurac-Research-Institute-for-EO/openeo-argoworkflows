@@ -171,7 +171,18 @@ def poll_job_status(job: ArgoJob, metadata: Any):
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
     )
 
-    workflow = argo.get_workflow(name=metadata.name, namespace=metadata.namespace)
+    try:
+        workflow = argo.get_workflow(name=metadata.name, namespace=metadata.namespace)
+    except Exception:
+        # Transient Argo/k8s API errors (e.g. `etcdserver: leader changed`, 500s,
+        # network blips) must not kill the poll chain: if we let this raise, the
+        # re-enqueue below never runs and the job is stuck "running" forever even
+        # after the workflow finishes. Log and reschedule another poll instead.
+        logger.exception(
+            "poll_job_status: transient error fetching workflow %s; rescheduling",
+            metadata.name,
+        )
+        return q.enqueue_in(timedelta(seconds=15), poll_job_status, job, metadata)
 
     if workflow.status.phase == "Succeeded":
         job.status = Status.finished
