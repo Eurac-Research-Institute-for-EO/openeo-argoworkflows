@@ -41,6 +41,18 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                         env=[
                             Env(name="STAC_API_URL", value=str(settings.STAC_API_URL)),
                             Env(name="OPENEO_COMPUTE_TIMEOUT", value=str(settings.OPENEO_COMPUTE_TIMEOUT)),
+                            # GDAL HTTP resilience (#144): abort stalled remote
+                            # raster reads (30s below 1KB/s) and retry, instead
+                            # of hanging until OPENEO_COMPUTE_TIMEOUT. Matches
+                            # the dask-gateway worker env (charts PR #10).
+                            Env(name="GDAL_HTTP_CONNECTTIMEOUT", value="10"),
+                            Env(name="GDAL_HTTP_TIMEOUT", value="120"),
+                            Env(name="GDAL_HTTP_LOW_SPEED_TIME", value="30"),
+                            Env(name="GDAL_HTTP_LOW_SPEED_LIMIT", value="1024"),
+                            Env(name="GDAL_HTTP_MAX_RETRY", value="5"),
+                            Env(name="GDAL_HTTP_RETRY_DELAY", value="2"),
+                            Env(name="GDAL_DISABLE_READDIR_ON_OPEN", value="EMPTY_DIR"),
+                            Env(name="VSI_CACHE", value="TRUE"),
                             EnvVar(
                                 name="AWS_ACCESS_KEY_ID",
                                 value_from=EnvVarSource(

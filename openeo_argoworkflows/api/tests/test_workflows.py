@@ -72,6 +72,34 @@ class TestExecutorWorkflowEnv:
         assert env["AWS_ENDPOINT_URL_S3"].value_from.secret_key_ref.key == "AWS_ENDPOINT_URL_S3"
 
 
+class TestExecutorWorkflowGdalEnv:
+    """GDAL HTTP resilience env — issue #144.
+
+    Stalled /vsicurl reads previously hung the executor until
+    OPENEO_COMPUTE_TIMEOUT. The executor pod must abort low-speed transfers
+    and retry instead, matching the dask-gateway worker pods (charts PR #10).
+    """
+
+    EXPECTED = {
+        "GDAL_HTTP_CONNECTTIMEOUT": "10",
+        "GDAL_HTTP_TIMEOUT": "120",
+        "GDAL_HTTP_LOW_SPEED_TIME": "30",
+        "GDAL_HTTP_LOW_SPEED_LIMIT": "1024",
+        "GDAL_HTTP_MAX_RETRY": "5",
+        "GDAL_HTTP_RETRY_DELAY": "2",
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "VSI_CACHE": "TRUE",
+    }
+
+    def test_gdal_resilience_env_present(self, monkeypatch):
+        w = _make_workflow(monkeypatch)
+        env = _get_container_env(w)
+        for name, value in self.EXPECTED.items():
+            assert name in env, f"{name} missing from executor pod env"
+            assert env[name].value == value, \
+                f"{name} expected {value!r}, got {env[name].value!r}"
+
+
 class TestExecutorWorkflowDeadline:
 
     def _make_deadline_workflow(self, deadline=7200, compute_timeout=600):
