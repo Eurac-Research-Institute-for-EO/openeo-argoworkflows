@@ -163,8 +163,8 @@ def execute(process_graph, user_profile, dask_profile):
 
     import json
 
-    import requests
     import xarray as xr
+    from openeo_argoworkflows_executor.http import post_json
     from raster2stac import Raster2STAC
 
     job_id = openeo_parameters.user_profile.OPENEO_JOB_ID
@@ -243,7 +243,7 @@ def execute(process_graph, user_profile, dask_profile):
             if os.path.exists(collection_file):
                 with open(collection_file, "r") as f:
                     collection_dict = json.load(f)
-                requests.post(stac_api_url, json=collection_dict)
+                post_json(stac_api_url, collection_dict)
 
             # POST each item to STAC API
             items_csv = f"{stac_path}/inline_items.csv"
@@ -253,9 +253,9 @@ def execute(process_graph, user_profile, dask_profile):
                         line = line.strip()
                         if line:
                             item_dict = json.loads(line)
-                            requests.post(
+                            post_json(
                                 f"{stac_api_url.rstrip('/')}/{job_id}/items",
-                                json=item_dict,
+                                item_dict,
                             )
 
         except Exception as e:
