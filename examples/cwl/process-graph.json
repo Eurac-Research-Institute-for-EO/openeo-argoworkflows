@@ -2,7 +2,7 @@
   "run1": {
     "process_id": "run_cwl",
     "arguments": {
-      "cwl": "https://raw.githubusercontent.com/Eurac-Research-Institute-for-EO/openeo-argoworkflows/main/examples/cwl/echo-tool.cwl",
+      "cwl": "https://raw.githubusercontent.com/Eurac-Research-Institute-for-EO/openeo-argoworkflows/eurac-main/examples/cwl/echo-tool.cwl",
       "inputs": {
         "message": "Hello from openEO run_cwl MVP"
       }
