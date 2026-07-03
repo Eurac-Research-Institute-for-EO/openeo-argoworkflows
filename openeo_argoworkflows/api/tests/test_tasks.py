@@ -107,3 +107,39 @@ def test_resolve_udps_does_not_call_db_for_predefined():
         _resolve_udps(pg, user_id)
 
     mock_get.assert_not_called()
+
+
+def test_resolve_udps_knows_run_cwl():
+    """run_cwl is a predefined EURAC process (specs/run_cwl.json) — the
+    resolver must NOT treat it as a UDP (#153: it crashed the queue-worker)."""
+    pg = {
+        "run1": {
+            "process_id": "run_cwl",
+            "arguments": {"cwl": "https://example/tool.cwl", "inputs": {}},
+            "result": True,
+        }
+    }
+    with patch("openeo_argoworkflows_api.tasks.get") as mock_get:
+        resolved = _resolve_udps(pg, uuid.uuid4())
+
+    assert resolved["run1"]["process_id"] == "run_cwl"
+    mock_get.assert_not_called()
+
+
+def test_submit_job_failure_marks_job_error():
+    """If pre-submission work raises (e.g. UDP resolution), the job must be
+    flipped to error — not left in 'queued' forever (#153)."""
+    from openeo_argoworkflows_api.tasks import submit_job
+    from openeo_fastapi.api.types import Status
+
+    job = MagicMock()
+    job.job_id = uuid.uuid4()
+    job.user_id = uuid.uuid4()
+
+    with patch("openeo_argoworkflows_api.tasks.WorkflowsService"), \
+         patch("openeo_argoworkflows_api.tasks._resolve_udps", side_effect=ValueError("boom")), \
+         patch("openeo_argoworkflows_api.tasks.modify") as mock_modify:
+        submit_job(job)
+
+    assert job.status == Status.error
+    mock_modify.assert_called_once_with(job)

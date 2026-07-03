@@ -13,7 +13,6 @@ hera = "^5.15.1"
 python-multipart = "^0.0.16"
 redis = "5.0.4"
 rq = "1.16.2"
-openeo-processes-dask-slim = "*"
 openeo-pg-parser-networkx = "*"
 boto3 = ">=1.26.0"
 
