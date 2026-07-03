@@ -11,6 +11,22 @@ def cli():
     pass
 
 
+def _close_dask(client, gateway):
+    """Best-effort close of the Dask client and gateway session. Never raises.
+
+    Left open, their comm threads / aiohttp sessions deadlock the interpreter
+    at shutdown — the process never exits and the job hangs in "running" even
+    though all work completed (#147).
+    """
+    for obj in (client, gateway):
+        if obj is None:
+            continue
+        try:
+            obj.close()
+        except Exception:
+            logger.warning("Failed to close %r", obj, exc_info=True)
+
+
 def _teardown_cluster(dask_cluster, gateway):
     """Best-effort shutdown of a gateway Dask cluster. Never raises.
 
@@ -106,6 +122,7 @@ def execute(process_graph, user_profile, dask_profile):
     # CWL jobs don't need a Dask cluster — skip cluster setup entirely
     dask_cluster = None
     gateway = None
+    client = None
     if is_cwl:
         logger.info("CWL job detected — skipping Dask cluster setup")
     elif openeo_parameters.dask_profile.LOCAL:
@@ -158,8 +175,10 @@ def execute(process_graph, user_profile, dask_profile):
         execute(parsed_graph=parsed_graph)
     finally:
         # Shut the gateway cluster down even when the job fails — otherwise the
-        # scheduler + worker pods leak until CLUSTER_IDLE_TIMEOUT (#144).
+        # scheduler + worker pods leak until CLUSTER_IDLE_TIMEOUT (#144) — and
+        # close the client/gateway so their threads can't wedge shutdown (#147).
         _teardown_cluster(dask_cluster, gateway)
+        _close_dask(client, gateway)
 
     import json
 
@@ -325,6 +344,16 @@ def execute(process_graph, user_profile, dask_profile):
             logger.warning(
                 f"CWL STAC publishing failed for job {job_id}, results are still available: {e}"
             )
+
+    # All work is done and on disk. Exit WITHOUT running interpreter shutdown:
+    # lingering dask/aiohttp finalizer threads deadlock atexit (observed: 68
+    # parked threads, job stuck in "running" forever, #147). Failure paths are
+    # untouched — exceptions still propagate to click for a nonzero exit.
+    import sys
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 cli.add_command(execute)
