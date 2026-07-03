@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import timedelta
 from hera.workflows import  WorkflowsService
@@ -11,16 +12,34 @@ from openeo_argoworkflows_api.psql.models import ArgoJob
 from openeo_argoworkflows_api.workflows import executor_workflow
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 
+logger = logging.getLogger(__name__)
+
 
 def _resolve_udps(process_graph: dict, user_id) -> dict:
-    import openeo_processes_dask_slim.specs
+    # Standard process specs come from openeo-processes-dask, which is already
+    # in the image as an openeo-fastapi dependency (it feeds GET /processes).
+    # The upstream port of this feature (#99) used the separate
+    # openeo-processes-dask-slim package — dropped in #153 as redundant.
+    import openeo_processes_dask.specs
     from openeo_pg_parser_networkx import Process as pgProcess, ProcessRegistry
     from openeo_pg_parser_networkx.resolving_utils import resolve_process_graph
     from openeo_fastapi.client.processes import UserDefinedProcessGraph
 
     process_registry = ProcessRegistry()
-    for pid in openeo_processes_dask_slim.specs.__all__:
-        process_registry[("predefined", pid)] = pgProcess(getattr(openeo_processes_dask_slim.specs, pid))
+    for pid in openeo_processes_dask.specs.__all__:
+        process_registry[("predefined", pid)] = pgProcess(getattr(openeo_processes_dask.specs, pid))
+
+    # Custom EURAC processes (e.g. run_cwl) live in specs/*.json — same set
+    # app.py registers for GET /processes. The slim package only knows the
+    # standard processes; without these the resolver mistakes run_cwl for a
+    # UDP and crashes the queue-worker (#153).
+    import json
+    from pathlib import Path
+
+    for spec_file in (Path(__file__).parent / "specs").glob("*.json"):
+        with open(spec_file) as f:
+            spec = json.load(f)
+        process_registry[("predefined", spec["id"])] = pgProcess(spec)
 
     def get_udp_spec(process_id: str, namespace: str) -> dict:
         udp = get(get_model=UserDefinedProcessGraph, primary_key=[process_id, namespace])
@@ -101,10 +120,17 @@ def submit_job(job: ArgoJob):
         val = os.environ.get(s3_var)
         if val:
             user_profile[s3_var] = val
-    process_graph = _resolve_udps(job.process.process_graph, job.user_id)
-    workflow = executor_workflow(argo, process_graph, dask_profile, user_profile)
-
-    response = workflow.create()
+    try:
+        process_graph = _resolve_udps(job.process.process_graph, job.user_id)
+        workflow = executor_workflow(argo, process_graph, dask_profile, user_profile)
+        response = workflow.create()
+    except Exception:
+        # If resolution or submission fails there is no workflow to poll — mark
+        # the job as errored instead of leaving it in 'queued' forever (#153).
+        logger.exception("Failed to submit job %s to Argo", job.job_id)
+        job.status = Status.error
+        modify(job)
+        return None
 
     job.status = Status.running
     job.workflowname = response.metadata.name
