@@ -11,14 +11,18 @@ def cli():
     pass
 
 
-def _close_dask(client, gateway):
-    """Best-effort close of the Dask client and gateway session. Never raises.
+def _close_dask(client, gateway, local_cluster):
+    """Best-effort close of the Dask client, gateway session and LocalCluster.
+    Never raises.
 
     Left open, their comm threads / aiohttp sessions deadlock the interpreter
     at shutdown — the process never exits and the job hangs in "running" even
-    though all work completed (#147).
+    though all work completed (#147). The in-process LocalCluster (LOCAL mode)
+    must be closed too: its threaded workers hold HDF5 state from the compute
+    and deadlock the post-processing xr.open_dataset if left alive (observed
+    on stable; gateway mode computes in separate pods and is unaffected).
     """
-    for obj in (client, gateway):
+    for obj in (client, local_cluster, gateway):
         if obj is None:
             continue
         try:
@@ -123,6 +127,7 @@ def execute(process_graph, user_profile, dask_profile):
     dask_cluster = None
     gateway = None
     client = None
+    local_cluster = None
     if is_cwl:
         logger.info("CWL job detected — skipping Dask cluster setup")
     elif openeo_parameters.dask_profile.LOCAL:
@@ -178,7 +183,7 @@ def execute(process_graph, user_profile, dask_profile):
         # scheduler + worker pods leak until CLUSTER_IDLE_TIMEOUT (#144) — and
         # close the client/gateway so their threads can't wedge shutdown (#147).
         _teardown_cluster(dask_cluster, gateway)
-        _close_dask(client, gateway)
+        _close_dask(client, gateway, local_cluster)
 
     import json
 

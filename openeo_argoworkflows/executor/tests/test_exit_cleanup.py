@@ -21,25 +21,37 @@ from openeo_argoworkflows_executor.cli import _close_dask
 class TestCloseDask:
 
     def test_none_args_are_noop(self):
-        _close_dask(None, None)
+        _close_dask(None, None, None)
 
     def test_closes_client_and_gateway(self):
         client, gateway = MagicMock(), MagicMock()
-        _close_dask(client, gateway)
+        _close_dask(client, gateway, None)
         client.close.assert_called_once()
         gateway.close.assert_called_once()
 
-    def test_client_close_error_does_not_skip_gateway(self):
-        client, gateway = MagicMock(), MagicMock()
+    def test_closes_local_cluster(self):
+        # LOCAL mode (stable): the in-process threaded LocalCluster must be
+        # closed too — its worker threads hold HDF5 state from the compute and
+        # deadlock the post-processing xr.open_dataset if left alive (#147,
+        # observed on stable only; gateway mode computes in separate pods).
+        client, local_cluster = MagicMock(), MagicMock()
+        _close_dask(client, None, local_cluster)
+        client.close.assert_called_once()
+        local_cluster.close.assert_called_once()
+
+    def test_client_close_error_does_not_skip_others(self):
+        client, gateway, local_cluster = MagicMock(), MagicMock(), MagicMock()
         client.close.side_effect = RuntimeError("loop is closed")
-        _close_dask(client, gateway)
+        _close_dask(client, gateway, local_cluster)
         gateway.close.assert_called_once()
+        local_cluster.close.assert_called_once()
 
     def test_never_raises(self):
-        client, gateway = MagicMock(), MagicMock()
+        client, gateway, local_cluster = MagicMock(), MagicMock(), MagicMock()
         client.close.side_effect = RuntimeError("boom")
         gateway.close.side_effect = ConnectionError("gone")
-        _close_dask(client, gateway)
+        local_cluster.close.side_effect = TimeoutError("stuck")
+        _close_dask(client, gateway, local_cluster)
 
 
 class TestSuccessPathHardExit:
