@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import click
 
@@ -54,6 +55,18 @@ def _teardown_cluster(dask_cluster, gateway):
         logger.warning("Failed to shut down Dask gateway cluster", exc_info=True)
 
 
+def _collect_result_files(results_path: str) -> list[str]:
+    """Return all non-hidden files below the executor results directory."""
+    import fsspec
+
+    fs = fsspec.filesystem(protocol="file")
+    return [
+        f
+        for f in fs.find(results_path)
+        if not Path(f).name.startswith(".") and fs.isfile(f)
+    ]
+
+
 @click.command()
 @click.option(
     "--process_graph",
@@ -79,7 +92,6 @@ def execute(process_graph, user_profile, dask_profile):
     import json
     import os
 
-    import fsspec
     import openeo_processes_dask
     from dask_gateway import Gateway
     from openeo_argoworkflows_executor.executor import _is_cwl_job, execute
@@ -198,11 +210,9 @@ def execute(process_graph, user_profile, dask_profile):
         "OPENEO_RESULTS_STAC_URL", "https://stac.openeo.eurac.edu/"
     )
 
-    # Collect all result files
-    fs = fsspec.filesystem(protocol="file")
-    all_result_files = [
-        f["name"] for f in fs.listdir(results_path) if not f["name"].startswith(".")
-    ]
+    # Some save_result backends write a directory containing data plus STAC
+    # metadata, so recurse and ignore directories.
+    all_result_files = _collect_result_files(results_path)
     result_files = [f for f in all_result_files if f.endswith(".nc")]
     other_files = [f for f in all_result_files if not f.endswith(".nc")]
 

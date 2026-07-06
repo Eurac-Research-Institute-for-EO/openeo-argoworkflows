@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from pathlib import Path
 from typing import Optional, Union
 
@@ -19,6 +20,8 @@ from openeo_argoworkflows_executor.timeout import compute_with_timeout
 __all__ = ["load_collection", "save_result"]
 
 logger = logging.getLogger(__name__)
+
+_PACKAGE_SAVE_RESULT_FORMATS = {"GTIFF", "COG", "ZARR"}
 
 
 def load_collection(
@@ -246,6 +249,132 @@ def save_result(
     options: Optional[dict] = None,
 ):
     """Save the result data cube to a file."""
+    options = dict(options or {})
+    fmt_upper = format.upper()
+
+    use_package_writer = options.pop("use_package_save_result", False)
+    if fmt_upper in _PACKAGE_SAVE_RESULT_FORMATS or use_package_writer:
+        return _save_result_with_process_package(data, fmt_upper, options)
+
+    if fmt_upper != "NETCDF":
+        supported = ", ".join(sorted(_PACKAGE_SAVE_RESULT_FORMATS | {"NETCDF"}))
+        raise ValueError(
+            f"Data can't be transformed into the requested output format '{format}'. "
+            f"Supported formats: {supported}"
+        )
+
+    return _save_result_netcdf(data)
+
+
+def _save_result_with_process_package(
+    data: RasterCube,
+    fmt_upper: str,
+    options: dict,
+) -> str:
+    """Delegate richer output formats to openeo-processes-save-result.
+
+    The standalone process returns STAC metadata. In argoworkflows, downstream
+    EOAP-CWL staging expects a local path, so this wrapper returns the first
+    local asset path referenced by that STAC output, falling back to the
+    collection JSON or output folder.
+    """
+    try:
+        from openeo_processes_save_result.save_result import (
+            save_result as package_save_result,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            "Output format "
+            f"'{fmt_upper}' requires openeo-processes-save-result to be installed "
+            "in the executor image."
+        ) from exc
+
+    results_path = Path(os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results"))
+    results_path.mkdir(parents=True, exist_ok=True)
+    output_folder = Path(
+        options.setdefault("output_folder", str(results_path / str(uuid.uuid4())))
+    )
+
+    cube = _as_dataset_for_save_result_package(data)
+    stac = package_save_result(data=cube, format=fmt_upper, options=options)
+
+    staged_path = _local_asset_path_from_stac(stac, output_folder)
+    if staged_path is not None:
+        logger.info(
+            "Successfully saved result via openeo-processes-save-result: %s",
+            staged_path,
+        )
+        return str(staged_path)
+
+    collection_id = options.get("collection_id", "save_result")
+    collection_json = output_folder / f"{collection_id}.json"
+    if collection_json.exists():
+        return str(collection_json)
+
+    return str(output_folder)
+
+
+def _as_dataset_for_save_result_package(data: RasterCube) -> xr.Dataset:
+    if isinstance(data, xr.Dataset):
+        return data
+
+    dim = data.openeo.band_dims[0] if data.openeo.band_dims else None
+    return data.to_dataset(
+        dim=dim, name="name" if not dim else None, promote_attrs=True
+    )
+
+
+def _local_asset_path_from_stac(stac: dict, output_folder: Path) -> Optional[Path]:
+    asset_refs = []
+
+    if stac.get("type") == "Feature":
+        asset_refs.extend(
+            (asset.get("href"), output_folder)
+            for asset in stac.get("assets", {}).values()
+        )
+
+    for link in stac.get("links", []):
+        if link.get("rel") != "item":
+            continue
+        href = link.get("href")
+        if not href:
+            continue
+        item_path = _resolve_local_href(href, output_folder)
+        if item_path is None or not item_path.exists() or item_path.suffix != ".json":
+            continue
+        try:
+            import json
+
+            with open(item_path) as f:
+                item = json.load(f)
+        except Exception as exc:
+            logger.warning("Could not read STAC item %s: %s", item_path, exc)
+            continue
+        asset_refs.extend(
+            (asset.get("href"), item_path.parent)
+            for asset in item.get("assets", {}).values()
+        )
+
+    for href, base in asset_refs:
+        path = _resolve_local_href(href, base)
+        if path is not None and path.exists():
+            return path
+
+    return None
+
+
+def _resolve_local_href(href: Optional[str], base: Path) -> Optional[Path]:
+    if not href or "://" in href:
+        return None
+
+    path = Path(href)
+    if not path.is_absolute():
+        path = base / href.lstrip("./")
+    return path
+
+
+def _save_result_netcdf(data: RasterCube) -> str:
+    """Save the result data cube to a NetCDF file."""
 
     def clean_unused_coordinates(ds):
         """
@@ -263,8 +392,6 @@ def save_result(
             if coord not in used_dims and coord not in keep:
                 ds = ds.drop_vars(coord)
         return ds
-
-    import uuid
 
     logger.info(
         f"Saving result data with shape: {data.shape if hasattr(data, 'shape') else 'unknown'}"

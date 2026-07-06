@@ -58,6 +58,16 @@ class TestRunUdf:
             assert inputs["openeo_data"]["class"] == "File"
             assert "file:///user_workspaces/user123/results/output.nc" in inputs["openeo_data"]["location"]
 
+    def test_data_directory_path_injects_openeo_data_directory(self, tmp_path):
+        data_dir = tmp_path / "result.zarr"
+        data_dir.mkdir()
+
+        with self._mock_run_cwl() as mock_cwl:
+            run_udf(data=str(data_dir), udf="workflow.cwl", runtime="eoap-cwl", context={})
+            inputs = self._get_inputs(mock_cwl)
+            assert inputs["openeo_data"]["class"] == "Directory"
+            assert inputs["openeo_data"]["location"] == f"file://{data_dir}"
+
     def test_data_non_path_string_does_not_inject(self):
         """A relative string or non-path value must not be treated as a file."""
         with self._mock_run_cwl() as mock_cwl:

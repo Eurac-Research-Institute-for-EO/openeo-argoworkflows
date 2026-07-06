@@ -568,11 +568,18 @@ def run_udf(
 
     inputs = dict(context or {})
     if isinstance(data, str) and data.startswith("/"):
-        # Pass as CWL File object so Calrissian stages it into the tool pod's
+        # Pass as a CWL object so Calrissian stages it into the tool pod's
         # working directory. A plain string path won't work because CWL tool
         # containers only have the working-dir PVC mount, not /user_workspaces.
-        inputs.setdefault("openeo_data", {"class": "File", "location": f"file://{data}"})
-        logger.info(f"Injecting staged data as CWL File input (openeo_data): {data}")
+        cwl_class = "Directory" if os.path.isdir(data) else "File"
+        inputs.setdefault(
+            "openeo_data", {"class": cwl_class, "location": f"file://{data}"}
+        )
+        logger.info(
+            "Injecting staged data as CWL %s input (openeo_data): %s",
+            cwl_class,
+            data,
+        )
     elif data is not None:
         # Standalone CWL tool — data may be an xarray object from a preceding
         # process or a non-path string. Ignore it; use context for CWL inputs.
