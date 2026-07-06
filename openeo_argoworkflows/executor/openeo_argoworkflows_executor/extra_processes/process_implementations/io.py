@@ -294,9 +294,10 @@ def _save_result_with_process_package(
     output_folder = Path(
         options.setdefault("output_folder", str(results_path / str(uuid.uuid4())))
     )
+    collection_id = options.get("collection_id", "save_result")
 
     cube = _as_dataset_for_save_result_package(data)
-    stac = package_save_result(data=cube, format=fmt_upper, options=options)
+    stac = package_save_result(data=cube, format=fmt_upper, options=dict(options))
 
     staged_path = _local_asset_path_from_stac(stac, output_folder)
     if staged_path is not None:
@@ -306,7 +307,6 @@ def _save_result_with_process_package(
         )
         return str(staged_path)
 
-    collection_id = options.get("collection_id", "save_result")
     collection_json = output_folder / f"{collection_id}.json"
     if collection_json.exists():
         return str(collection_json)

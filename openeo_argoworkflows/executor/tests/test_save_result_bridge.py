@@ -1,6 +1,10 @@
 import importlib.util
 import json
+import sys
+import types
 from pathlib import Path
+
+import xarray as xr
 
 
 _io_spec = importlib.util.spec_from_file_location(
@@ -32,3 +36,29 @@ def test_local_asset_path_from_stac_resolves_item_asset_relative_to_item(tmp_pat
 
 def test_resolve_local_href_ignores_remote_href(tmp_path):
     assert _io._resolve_local_href("s3://bucket/result.tif", tmp_path) is None
+
+
+def test_package_save_result_fallback_keeps_collection_id(monkeypatch, tmp_path):
+    package = types.ModuleType("openeo_processes_save_result")
+    save_result_module = types.ModuleType("openeo_processes_save_result.save_result")
+
+    def fake_save_result(data, format, options):
+        collection_id = options.pop("collection_id")
+        options.pop("output_folder")
+        (tmp_path / f"{collection_id}.json").write_text("{}")
+        return {}
+
+    save_result_module.save_result = fake_save_result
+    monkeypatch.setitem(sys.modules, "openeo_processes_save_result", package)
+    monkeypatch.setitem(
+        sys.modules, "openeo_processes_save_result.save_result", save_result_module
+    )
+
+    data = xr.Dataset({"B01": (["y", "x"], [[1]])})
+    result = _io._save_result_with_process_package(
+        data,
+        "GTIFF",
+        {"output_folder": str(tmp_path), "collection_id": "custom-result"},
+    )
+
+    assert result == str(tmp_path / "custom-result.json")
