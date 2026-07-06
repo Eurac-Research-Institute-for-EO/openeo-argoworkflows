@@ -307,6 +307,9 @@ def _save_result_with_process_package(
         )
         return str(staged_path)
 
+    if fmt_upper == "ZARR" and output_folder.exists():
+        return str(output_folder)
+
     collection_json = output_folder / f"{collection_id}.json"
     if collection_json.exists():
         return str(collection_json)
