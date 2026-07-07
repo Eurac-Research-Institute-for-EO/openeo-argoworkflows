@@ -31,15 +31,14 @@ RUN GDAL_VERSION=$(gdal-config --version) && \
 # openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac.2
 # (tag), but poetry export resolves our own openeo-processes-dask dep to the commit
 # hash. Pip sees two different Git references for the same package and refuses.
-# Workaround: install save-result with --no-deps after the main install — all its
-# transitive deps are already included in the core requirements.
+# Workaround: install save-result directly from its repo with --no-deps after the
+# main install — all its transitive deps are already included in the core export.
 RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
-    grep -v "^gdal==" /tmp/requirements.txt > /tmp/requirements-no-gdal.txt && \
-    grep -v "openeo-processes-save-result" /tmp/requirements-no-gdal.txt > /tmp/requirements-core.txt && \
-    grep "openeo-processes-save-result" /tmp/requirements-no-gdal.txt > /tmp/requirements-save-result.txt && \
+    grep -v "^gdal==" /tmp/requirements.txt | grep -v "openeo-processes-save-result" > /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps -r /tmp/requirements-save-result.txt && \
-    rm /tmp/requirements.txt /tmp/requirements-no-gdal.txt /tmp/requirements-core.txt /tmp/requirements-save-result.txt
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
+        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@main" && \
+    rm /tmp/requirements.txt /tmp/requirements-core.txt
 
 # Create the openeo_executor CLI entry point script directly.
 # Avoids pip install . which triggers poetry-core's path validation bug

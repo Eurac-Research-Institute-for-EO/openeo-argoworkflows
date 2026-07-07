@@ -294,7 +294,14 @@ def _save_result_with_process_package(
     collection_id = options.get("collection_id", "save_result")
 
     cube = _as_dataset_for_save_result_package(data)
-    stac = package_save_result(data=cube, format=fmt_upper, options=dict(options))
+
+    # Executor pods run in air-gapped environments where PySTAC cannot fetch
+    # remote STAC extension schemas (stac-extensions.github.io). Disable
+    # validation to prevent GetSchemaError in offline mode.
+    options = dict(options)
+    options.setdefault("skip_validation", True)
+
+    stac = package_save_result(data=cube, format=fmt_upper, options=options)
 
     staged_path = _local_asset_path_from_stac(stac, output_folder)
     if staged_path is not None:
