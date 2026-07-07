@@ -269,7 +269,7 @@ def execute(process_graph, user_profile, dask_profile):
         _teardown_cluster(dask_cluster, gateway)
         _close_dask(client, gateway, local_cluster)
 
-    from openeo_argoworkflows_executor.http import post_json
+    from openeo_argoworkflows_executor.http_utils import post_json
 
     job_id = openeo_parameters.user_profile.OPENEO_JOB_ID
     results_path = str(openeo_parameters.user_profile.results_path)
