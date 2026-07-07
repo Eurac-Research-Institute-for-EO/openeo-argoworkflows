@@ -21,7 +21,7 @@ __all__ = ["load_collection", "save_result"]
 
 logger = logging.getLogger(__name__)
 
-_PACKAGE_SAVE_RESULT_FORMATS = {"GTIFF", "COG", "ZARR"}
+_PACKAGE_SAVE_RESULT_FORMATS = {"GTIFF", "COG", "NETCDF", "ZARR"}
 
 
 def load_collection(
@@ -256,14 +256,11 @@ def save_result(
     if fmt_upper in _PACKAGE_SAVE_RESULT_FORMATS or use_package_writer:
         return _save_result_with_process_package(data, fmt_upper, options)
 
-    if fmt_upper != "NETCDF":
-        supported = ", ".join(sorted(_PACKAGE_SAVE_RESULT_FORMATS | {"NETCDF"}))
-        raise ValueError(
-            f"Data can't be transformed into the requested output format '{format}'. "
-            f"Supported formats: {supported}"
-        )
-
-    return _save_result_netcdf(data)
+    supported = ", ".join(sorted(_PACKAGE_SAVE_RESULT_FORMATS))
+    raise ValueError(
+        f"Data can't be transformed into the requested output format '{format}'. "
+        f"Supported formats: {supported}"
+    )
 
 
 def _save_result_with_process_package(
@@ -357,6 +354,22 @@ def _local_asset_path_from_stac(stac: dict, output_folder: Path) -> Optional[Pat
             (asset.get("href"), item_path.parent)
             for asset in item.get("assets", {}).values()
         )
+
+    items_dir = output_folder / "items"
+    if items_dir.exists():
+        for item_path in sorted(items_dir.glob("*.json")):
+            try:
+                import json
+
+                with open(item_path) as f:
+                    item = json.load(f)
+            except Exception as exc:
+                logger.warning("Could not read STAC item %s: %s", item_path, exc)
+                continue
+            asset_refs.extend(
+                (asset.get("href"), item_path.parent)
+                for asset in item.get("assets", {}).values()
+            )
 
     for href, base in asset_refs:
         path = _resolve_local_href(href, base)
@@ -507,7 +520,7 @@ def _save_result_netcdf(data: RasterCube) -> str:
             out_data["y"].attrs["standard_name"] = "projection_y_coordinate"
             out_data["y"].attrs["long_name"] = "y coordinate of projection"
 
-    # Restore reduced temporal dimensions so raster2stac can process it
+    # Restore reduced temporal dimensions so package-generated STAC can describe it.
     # Must run BEFORE attr stripping, which deletes the dict-typed reduced_dimensions_min_values
     reduced_mins = out_data.attrs.get("reduced_dimensions_min_values", {})
     for dim_name, min_val in reduced_mins.items():
@@ -516,7 +529,7 @@ def _save_result_netcdf(data: RasterCube) -> str:
             if dim_name in ("t", "time", "date", "DATE") and isinstance(min_val, str):
                 min_val = np.datetime64(min_val)
             out_data = out_data.expand_dims({dim_name: [min_val]})
-            # Set openeo attrs so raster2stac recognizes the temporal dimension
+            # Set openEO attrs so the save-result package recognizes the temporal dimension.
             if dim_name in ("t", "time", "date", "DATE"):
                 out_data.attrs["openeo_temporal_dims"] = [dim_name]
 

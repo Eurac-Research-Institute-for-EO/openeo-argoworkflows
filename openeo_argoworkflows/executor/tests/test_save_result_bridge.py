@@ -113,6 +113,23 @@ def test_real_package_bridge_gtiff_temporal_cube_returns_existing_path(
     assert Path(result).exists()
 
 
+def test_real_package_bridge_netcdf_temporal_cube_returns_existing_asset(
+    monkeypatch, tmp_path
+):
+    pytest.importorskip("openeo_processes_save_result.save_result")
+    monkeypatch.setenv("OPENEO_RESULTS_PATH", str(tmp_path))
+
+    result = _io.save_result(
+        _temporal_dataarray_cube(),
+        format="NetCDF",
+        options={"collection_id": "argoworkflows-netcdf"},
+    )
+
+    result_path = Path(result)
+    assert result_path.exists()
+    assert result_path.suffix == ".nc"
+
+
 def test_real_package_bridge_zarr_stages_directory_for_cwl(monkeypatch, tmp_path):
     pytest.importorskip("openeo_processes_save_result.save_result")
     monkeypatch.setenv("OPENEO_RESULTS_PATH", str(tmp_path))

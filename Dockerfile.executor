@@ -1,7 +1,7 @@
 FROM python:3.11-slim-bookworm AS base
 
 WORKDIR /opt
-ARG POETRY_VERSION="1.8.3"
+ARG POETRY_VERSION="2.4.1"
 
 ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 ENV POETRY_HOME=/opt/poetry
@@ -11,7 +11,7 @@ COPY ./openeo_argoworkflows/executor/README.md ./openeo_argoworkflows/executor/p
 
 RUN python3 -m venv $VIRTUAL_ENV && \
     $VIRTUAL_ENV/bin/pip install -U pip setuptools && \
-    $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION}
+    $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION} poetry-plugin-export
 
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
@@ -38,17 +38,9 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
 RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_argoworkflows_executor.cli import cli\ncli()\n' > $VIRTUAL_ENV/bin/openeo_executor && \
     chmod +x $VIRTUAL_ENV/bin/openeo_executor
 
-# Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
-# Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
-# Pin zarr<=2.18.7: openeo-processes-dask requires zarr<=2.18.7 and zarr 3.x fails to import
-# (needs typing_extensions>=4.12, but calrissian pins typing_extensions==4.8.0). zarr 2.18.7
-# in turn requires numcodecs<0.16. kerchunk<0.2.7 keeps it zarr-2 compatible (0.2.7+ needs zarr 3).
-RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py "kerchunk<0.2.7" netcdf4 numcodecs "numpy<2" \
-        pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray "zarr<=2.18.7" requests && \
-    $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
-
-# Install CWL execution dependencies (calrissian for K8s CWL runner, cwltool for validation)
-RUN $VIRTUAL_ENV/bin/pip install calrissian cwltool
+# Install Calrissian without its dependency pins so it cannot downgrade the
+# Zarr v3 executor stack through typing-extensions==4.8.0.
+RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
 
 # Verify the entry point exists
 RUN which openeo_executor
