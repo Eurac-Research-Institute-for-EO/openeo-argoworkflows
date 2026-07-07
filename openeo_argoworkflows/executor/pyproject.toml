@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "openeo_argoworkflows_executor"}]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.11,<3.13"
 dask-gateway = "^2024.1.0"
 openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac.2", extras = ["implementations", "ml"]}
 openeo-processes-save-result = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git", branch = "main"}
