@@ -3275,8 +3275,8 @@ test = ["pytest"]
 [package.source]
 type = "git"
 url = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git"
-reference = "main"
-resolved_reference = "f869f8b24193ea864956cd48c3f0eb382499b03a"
+reference = "v2026.7.10-eurac.1"
+resolved_reference = "06da04820686b726cd778953003bb9cd1b2252f3"
 
 [[package]]
 name = "oschmod"
@@ -6790,4 +6790,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "0cf2aaf1e3f370ee2034eeca6c1971b8bcdc4ae1f30116ae0fb43f5449709c0d"
+content-hash = "ee632d4645ae930916cf1c6a084f7e9e114573a62d5a21a4e7f19da320c67a5b"

@@ -38,7 +38,7 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
     grep -v "^gdal==" /tmp/requirements.txt | grep -v "openeo-processes-save-result" > /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
-        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@main" && \
+        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.10-eurac.1" && \
     rm /tmp/requirements.txt /tmp/requirements-core.txt
 
 # Create the openeo_executor CLI entry point script directly.
@@ -55,7 +55,6 @@ RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
 RUN which openeo_executor
 
 ########################################################################################################################
-ARG PYTHON_VERSION="3.11"
 FROM python:${PYTHON_VERSION}-slim-bookworm AS prod
 
 ARG USER_ID=1000

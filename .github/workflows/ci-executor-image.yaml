@@ -46,25 +46,19 @@ jobs:
 
       - name: Smoke test — import validation
         run: |
-          docker run --rm openeo-argoworkflows-executor:ci python -c "
-import zarr
-import typing_extensions
-import calrissian
-from openeo_processes_save_result import save_result
-
-print(f'zarr={zarr.__version__}')
-assert zarr.__version__.startswith('3.'), f'expected zarr 3.x, got {zarr.__version__}'
-assert callable(save_result), 'save_result is not callable'
-print('ALL SMOKE CHECKS PASSED')
-"
+          docker run --rm openeo-argoworkflows-executor:ci python -c "import zarr; import typing_extensions; import calrissian; from openeo_processes_save_result import save_result; print(f'zarr={zarr.__version__}'); assert zarr.__version__.startswith('3.'), f'expected zarr 3.x, got {zarr.__version__}'; assert callable(save_result), 'save_result is not callable'; print('ALL SMOKE CHECKS PASSED')"
 
       - name: Install pytest in image
         run: |
-          CONTAINER_ID=$(docker run -d openeo-argoworkflows-executor:ci sleep 30)
+          CONTAINER_ID=$(docker run -d openeo-argoworkflows-executor:ci sleep infinity)
+          cleanup() {
+            docker rm -f "$CONTAINER_ID" > /dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
           docker exec "$CONTAINER_ID" pip install pytest -q
           docker commit "$CONTAINER_ID" openeo-argoworkflows-executor:ci-pytest
-          docker kill "$CONTAINER_ID" > /dev/null
-          docker rm "$CONTAINER_ID" > /dev/null
+          cleanup
+          trap - EXIT
 
       - name: Run focused tests inside image
         run: |
