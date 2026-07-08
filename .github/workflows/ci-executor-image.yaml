@@ -1,0 +1,78 @@
+name: Executor image CI
+
+on:
+  push:
+    branches:
+      - main
+      - eurac-main
+      - dev
+      - 'feature/**'
+    paths:
+      - 'Dockerfile.executor'
+      - 'openeo_argoworkflows/executor/**'
+  pull_request:
+    branches:
+      - main
+      - eurac-main
+      - dev
+      - 'feature/**'
+    paths:
+      - 'Dockerfile.executor'
+      - 'openeo_argoworkflows/executor/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version:
+          - "3.12"
+          - "3.11"
+          - "3.13"
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build executor image
+        run: |
+          docker build \
+            --build-arg PYTHON_VERSION=${{ matrix.python-version }} \
+            -t openeo-argoworkflows-executor:ci \
+            -f Dockerfile.executor \
+            .
+
+      - name: Smoke test — import validation
+        run: |
+          docker run --rm openeo-argoworkflows-executor:ci python -c "import zarr; import typing_extensions; import calrissian; from openeo_processes_save_result import save_result; print(f'zarr={zarr.__version__}'); assert zarr.__version__.startswith('3.'), f'expected zarr 3.x, got {zarr.__version__}'; assert callable(save_result), 'save_result is not callable'; print('ALL SMOKE CHECKS PASSED')"
+
+      - name: Install pytest in image
+        run: |
+          CONTAINER_ID=$(docker run -d openeo-argoworkflows-executor:ci sleep infinity)
+          cleanup() {
+            docker rm -f "$CONTAINER_ID" > /dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker exec "$CONTAINER_ID" pip install pytest -q
+          docker commit "$CONTAINER_ID" openeo-argoworkflows-executor:ci-pytest
+          cleanup
+          trap - EXIT
+
+      - name: Run focused tests inside image
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/mnt/repo:ro \
+            openeo-argoworkflows-executor:ci-pytest \
+            bash -c "
+              cd /mnt/repo
+              python -m pytest \
+                openeo_argoworkflows/executor/tests/test_save_result_bridge.py \
+                openeo_argoworkflows/executor/tests/test_cwl_pod_env.py \
+                openeo_argoworkflows/executor/tests/test_stac_copy.py \
+                openeo_argoworkflows/executor/tests/test_cli_results.py \
+                openeo_argoworkflows/executor/tests/test_s3_upload.py \
+                openeo_argoworkflows/executor/tests/test_http_timeouts.py \
+                -q --no-header
+            "

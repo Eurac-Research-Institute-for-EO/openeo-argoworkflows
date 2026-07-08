@@ -9,12 +9,11 @@ When they are absent, Calrissian must still be invoked (with a warning logged).
 
 import importlib.util
 import json
-import os
+import sys
 import tempfile
+import types
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import patch
 
 _cwl_spec = importlib.util.spec_from_file_location(
     "cwl",
@@ -46,6 +45,13 @@ def _captured_calrissian_args(monkeypatch, env_override: dict):
             if pod_env_file.exists():
                 captured["pod_env"] = json.loads(pod_env_file.read_text())
         return 0
+
+    fake_calrissian = types.ModuleType("calrissian")
+    fake_calrissian_main_module = types.ModuleType("calrissian.main")
+    fake_calrissian_main_module.main = fake_calrissian_main
+    fake_calrissian.main = fake_calrissian_main_module
+    monkeypatch.setitem(sys.modules, "calrissian", fake_calrissian)
+    monkeypatch.setitem(sys.modules, "calrissian.main", fake_calrissian_main_module)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cwl_content = json.dumps({

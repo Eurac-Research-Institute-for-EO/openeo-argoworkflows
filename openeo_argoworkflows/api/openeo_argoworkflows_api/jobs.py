@@ -396,7 +396,7 @@ class ArgoJobsRegister(JobsRegister):
                     )
                 )
         else:
-            # New raster2stac executor: assets are on STAC items, not the collection.
+            # Package-generated STAC stores assets on items, not on the collection.
             # Read items from items/ directory and add their assets to the collection.
             items_dir = wspace.stac_directory / "items"
             item_files = sorted(globfiles(str(items_dir / "*.json"))) if items_dir.exists() else []
@@ -557,4 +557,3 @@ class ArgoJobsRegister(JobsRegister):
                 },
             )
         return response
-

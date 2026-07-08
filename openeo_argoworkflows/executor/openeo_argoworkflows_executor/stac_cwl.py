@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from openeo_argoworkflows_executor.http import post_json
+from openeo_argoworkflows_executor.http_utils import post_json
 
 logger = logging.getLogger(__name__)
 

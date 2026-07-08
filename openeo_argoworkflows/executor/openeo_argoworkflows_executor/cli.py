@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import click
 
@@ -54,6 +55,91 @@ def _teardown_cluster(dask_cluster, gateway):
         logger.warning("Failed to shut down Dask gateway cluster", exc_info=True)
 
 
+def _collect_result_files(results_path: str) -> list[str]:
+    """Return all non-hidden files below the executor results directory."""
+    import fsspec
+
+    fs = fsspec.filesystem(protocol="file")
+    return [
+        f
+        for f in fs.find(results_path)
+        if not Path(f).name.startswith(".") and fs.isfile(f)
+    ]
+
+
+def _find_stac_collections(results_path: str) -> list[Path]:
+    """Return package-generated STAC collection JSONs below results_path."""
+    import json
+
+    collections = []
+    for candidate in sorted(Path(results_path).rglob("*.json")):
+        if any(part.startswith(".") for part in candidate.relative_to(results_path).parts):
+            continue
+        try:
+            with open(candidate) as f:
+                payload = json.load(f)
+        except Exception:
+            continue
+        if payload.get("type") == "Collection":
+            collections.append(candidate)
+    return collections
+
+
+def _publish_stac_collection(
+    collection_file: Path,
+    stac_path: str,
+    job_id: str,
+    stac_api_url: str,
+    post_json_func,
+) -> None:
+    """Normalize, upload assets for, and publish a package-generated STAC collection."""
+    import json
+    import shutil
+
+    from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import (
+        upload_stac_item_assets,
+    )
+
+    stac_dir = Path(stac_path)
+    stac_dir.mkdir(parents=True, exist_ok=True)
+    items_dir = stac_dir / "items"
+    if items_dir.exists():
+        shutil.rmtree(items_dir)
+    items_dir.mkdir(parents=True, exist_ok=True)
+
+    source_items_dir = collection_file.parent / "items"
+    if source_items_dir.exists():
+        for item_file in sorted(source_items_dir.glob("*.json")):
+            shutil.copy2(item_file, items_dir / item_file.name)
+
+    with open(collection_file) as f:
+        collection = json.load(f)
+
+    collection["id"] = job_id
+    collection["links"] = [
+        link
+        for link in collection.get("links", [])
+        if link.get("rel") not in {"self", "root", "parent", "items", "item"}
+    ]
+    collection["links"].append(
+        {"rel": "items", "href": f"{stac_api_url.rstrip('/')}/{job_id}/items"}
+    )
+
+    collection_target = stac_dir / f"{job_id}.json"
+    with open(collection_target, "w") as f:
+        json.dump(collection, f, indent=2)
+
+    n_uploaded = upload_stac_item_assets(items_dir)
+    if n_uploaded:
+        logger.info("Uploaded %s package-generated STAC asset(s) to S3", n_uploaded)
+
+    post_json_func(stac_api_url, collection)
+    for item_file in sorted(items_dir.glob("*.json")):
+        with open(item_file) as f:
+            item = json.load(f)
+        post_json_func(f"{stac_api_url.rstrip('/')}/{job_id}/items", item)
+
+
 @click.command()
 @click.option(
     "--process_graph",
@@ -79,12 +165,10 @@ def execute(process_graph, user_profile, dask_profile):
     import json
     import os
 
-    import fsspec
     import openeo_processes_dask
     from dask_gateway import Gateway
     from openeo_argoworkflows_executor.executor import _is_cwl_job, execute
     from openeo_argoworkflows_executor.models import ExecutorParameters
-    from openeo_argoworkflows_executor.stac import create_stac_item
     from openeo_pg_parser_networkx.graph import OpenEOProcessGraph
 
     logger.info(
@@ -185,11 +269,7 @@ def execute(process_graph, user_profile, dask_profile):
         _teardown_cluster(dask_cluster, gateway)
         _close_dask(client, gateway, local_cluster)
 
-    import json
-
-    import xarray as xr
-    from openeo_argoworkflows_executor.http import post_json
-    from raster2stac import Raster2STAC
+    from openeo_argoworkflows_executor.http_utils import post_json
 
     job_id = openeo_parameters.user_profile.OPENEO_JOB_ID
     results_path = str(openeo_parameters.user_profile.results_path)
@@ -198,144 +278,41 @@ def execute(process_graph, user_profile, dask_profile):
         "OPENEO_RESULTS_STAC_URL", "https://stac.openeo.eurac.edu/"
     )
 
-    # Collect all result files
-    fs = fsspec.filesystem(protocol="file")
-    all_result_files = [
-        f["name"] for f in fs.listdir(results_path) if not f["name"].startswith(".")
-    ]
+    # Some save_result backends write a directory containing data plus STAC
+    # metadata, so recurse and ignore directories.
+    all_result_files = _collect_result_files(results_path)
     result_files = [f for f in all_result_files if f.endswith(".nc")]
     other_files = [f for f in all_result_files if not f.endswith(".nc")]
+    package_stac_collections = _find_stac_collections(results_path)
 
-    if result_files and not is_cwl:
+    if package_stac_collections and not is_cwl:
         try:
-            # Workaround for raster2stac bugs:
-            # Bug 1: generate_netcdf_stac() fails with file paths on HDF5-based NetCDF4 files
-            #        (xr.open_dataset() missing engine='netcdf4')
-            # Bug 2: _ensure_crs() does not detect CRS from CF grid_mapping variable (spatial_ref)
-            # Fix: open files explicitly and write CRS via rioxarray before passing datasets.
-            datasets = []
-            for filepath in result_files:
-                ds = xr.open_dataset(filepath, engine="netcdf4")
-                if ds.rio.crs is None:
-                    # Read CRS from CF grid_mapping variable if present
-                    # grid_mapping var may be in data_vars or coords
-                    crs_wkt = None
-                    for var in ds.data_vars:
-                        gm = ds[var].attrs.get("grid_mapping")
-                        if gm and gm in ds:
-                            crs_wkt = ds[gm].attrs.get("crs_wkt") or ds[gm].attrs.get(
-                                "spatial_ref"
-                            )
-                            if crs_wkt:
-                                break
-                    if crs_wkt is None and "spatial_ref" in ds:
-                        crs_wkt = ds["spatial_ref"].attrs.get("crs_wkt") or ds[
-                            "spatial_ref"
-                        ].attrs.get("spatial_ref")
-                    if crs_wkt:
-                        ds = ds.rio.write_crs(crs_wkt)
-                datasets.append(ds)
-
-            # raster2stac calls item.validate() which fetches remote JSON schemas from
-            # proj.org — blocked in the executor pod (403). Disable pystac validation.
-            import pystac
-
-            pystac.Item.validate = lambda self: []
-
-            # raster2stac expects a double-nested list when passing xarray Datasets:
-            # outer list = collection items, inner list = files for the same timestamp.
-            Raster2STAC(
-                data=[[ds] for ds in datasets],
-                collection_id=job_id,
-                description=f"openEO batch job results for job {job_id}",
-                collection_url=stac_api_url,
-                output_folder=stac_path,
-                s3_upload=False,
-            ).generate_netcdf_stac()
-
-            for ds in datasets:
-                ds.close()
-
-            # Upload result files to S3 and rewrite STAC item hrefs
-            from openeo_argoworkflows_executor.extra_processes.process_implementations.s3 import upload_stac_item_assets
-            n_uploaded = upload_stac_item_assets(f"{stac_path}/items")
-            if n_uploaded:
-                logger.info(f"Uploaded {n_uploaded} result asset(s) to S3")
-
-            # POST collection to STAC API
-            collection_file = f"{stac_path}/{job_id}.json"
-            if os.path.exists(collection_file):
-                with open(collection_file, "r") as f:
-                    collection_dict = json.load(f)
-                post_json(stac_api_url, collection_dict)
-
-            # POST each item to STAC API
-            items_csv = f"{stac_path}/inline_items.csv"
-            if os.path.exists(items_csv):
-                with open(items_csv, "r") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            item_dict = json.loads(line)
-                            post_json(
-                                f"{stac_api_url.rstrip('/')}/{job_id}/items",
-                                item_dict,
-                            )
-
+            for collection_file in package_stac_collections:
+                _publish_stac_collection(
+                    collection_file=collection_file,
+                    stac_path=stac_path,
+                    job_id=job_id,
+                    stac_api_url=stac_api_url,
+                    post_json_func=post_json,
+                )
         except Exception as e:
             logger.warning(
-                f"Raster2STAC failed for job {job_id}: {e} — falling back to create_stac_item"
+                "Package-generated STAC publishing failed for job %s: %s",
+                job_id,
+                e,
             )
-            # Fallback: build a minimal STAC collection using our own create_stac_item
-            # Write as a flat JSON file (not pystac's directory tree) because the API
-            # expects STAC/{job_id}.json to be a file, not a directory.
-            try:
-                import pystac
 
-                items = []
-                for filepath in result_files:
-                    item = create_stac_item(filepath)
-                    items.append(item)
-
-                # Build a minimal STAC collection dict
-                collection_dict = {
-                    "type": "Collection",
-                    "id": job_id,
-                    "stac_version": "1.0.0",
-                    "description": f"openEO batch job results for job {job_id}",
-                    "links": [],
-                    "extent": {
-                        "spatial": {
-                            "bbox": [items[0].bbox] if items else [[-180, -90, 180, 90]],
-                        },
-                        "temporal": {
-                            "interval": [[
-                                items[0].datetime.isoformat() + "Z" if items and items[0].datetime else None,
-                                items[-1].datetime.isoformat() + "Z" if items and items[-1].datetime else None,
-                            ]],
-                        },
-                    },
-                    "license": "proprietary",
-                    "assets": {},
-                }
-
-                # Add result files as collection-level assets
-                for item in items:
-                    for asset_key, asset in item.assets.items():
-                        collection_dict["assets"][asset_key] = asset.to_dict()
-
-                collection_file = f"{stac_path}/{job_id}.json"
-                with open(collection_file, "w") as f:
-                    json.dump(collection_dict, f, indent=2)
-                logger.info(f"Fallback STAC collection saved to {collection_file}")
-            except Exception as fallback_err:
-                logger.warning(
-                    f"Fallback STAC creation also failed for job {job_id}: {fallback_err}"
-                )
+    if result_files and not is_cwl and not package_stac_collections:
+        logger.warning(
+            "Found result NetCDF files for job %s without package-generated STAC. "
+            "Direct STAC generation in argoworkflows is disabled; "
+            "save_result outputs must be produced through openeo-processes-save-result.",
+            job_id,
+        )
 
     # Handle non-NetCDF output files (e.g. from CWL workflows)
     # Create minimal STAC collection and items so they appear in job results
-    if other_files and not result_files:
+    if other_files and not result_files and not package_stac_collections:
         try:
             from openeo_argoworkflows_executor.stac_cwl import create_cwl_stac
 

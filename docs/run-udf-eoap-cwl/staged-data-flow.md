@@ -12,14 +12,12 @@ This is the endorsed pattern from VITO/EOEPCA alignment. The idea:
 3. The file path is passed as a CWL input via `context`
 4. `run_udf(EOAP-CWL)` runs a CWL tool on that file
 
-## Required Change: `save_result` Must Return File Path
+## Completed: `save_result` Returns File Path
 
-**Current state**: `save_result` in `io.py` writes the file but returns `None`.
+**Current state**: `save_result` in `io.py` now returns a file path string (not `None`).
 
-**Fix needed**: Add `return str(destination)` at the end of `save_result()` in:
-`openeo_argoworkflows/executor/openeo_argoworkflows_executor/extra_processes/process_implementations/io.py`
-
-Without this, `{"from_node": "save1"}` resolves to `None` and no file path reaches `run_udf`.
+`_save_result_with_process_package()` delegates to `openeo-processes-save-result`
+and returns the first local asset path referenced by the STAC output.
 
 ## Process Graph Example
 
@@ -98,5 +96,5 @@ stdout: gdalinfo-output.txt
 
 ## Status
 
-- `save_result` returning file path: **NOT YET IMPLEMENTED** (issue #93)
-- Real geospatial CWL example: **NOT YET WRITTEN** (issue #93)
+- `save_result` returning file path: **IMPLEMENTED** — all four raster formats (GTIFF, COG, NETCDF, ZARR) delegate to `openeo-processes-save-result` and return a local path string.
+- Real geospatial CWL example: See `examples/cwl/gdalinfo-tool.cwl` and `examples/cwl/ndvi-tool.cwl` for working examples.
