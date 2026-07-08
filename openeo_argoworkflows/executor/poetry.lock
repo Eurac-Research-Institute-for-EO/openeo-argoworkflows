@@ -3242,12 +3242,12 @@ ml = ["xgboost[dask] (>=1.5.1)"]
 [package.source]
 type = "git"
 url = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git"
-reference = "v2026.7.1-eurac.2"
+reference = "v2026.7.1-eurac-dev.1"
 resolved_reference = "eeb5ffbeaf107c122ae3206d4320885408d10874"
 
 [[package]]
 name = "openeo-processes-save-result"
-version = "0.1.0"
+version = "2026.7.1"
 description = "Custom implementation of `save_result` process for the openEO processes ecosystem"
 optional = false
 python-versions = ">=3.11"
@@ -3257,10 +3257,10 @@ develop = false
 
 [package.dependencies]
 boto3 = "*"
-openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", rev = "v2026.7.1-eurac.2", extras = ["implementations"]}
+openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", rev = "v2026.7.1-eurac-dev.1", extras = ["implementations"]}
 pandas = "<3.0.0"
 pystac = ">=1.8.0"
-raster2stac = ">=2026.6.2"
+raster2stac = {git = "https://gitlab.inf.unibz.it/earth_observation_public/raster-to-stac.git", rev = "trial-save-result-dev-backend"}
 rasterio = "*"
 rioxarray = "*"
 s3fs = "*"
@@ -3275,8 +3275,8 @@ test = ["pytest"]
 [package.source]
 type = "git"
 url = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git"
-reference = "v2026.7.10-eurac.1"
-resolved_reference = "06da04820686b726cd778953003bb9cd1b2252f3"
+reference = "v2026.7.1-eurac-dev.1"
+resolved_reference = "74962133c248caec3c5dd8ce7e528d874ae7b4f0"
 
 [[package]]
 name = "oschmod"
@@ -5096,15 +5096,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "raster2stac"
-version = "2026.6.2"
+version = "2026.7.1"
 description = "Create valid STAC Collections, Items and Assets given already existing raster datasets"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-files = [
-    {file = "raster2stac-2026.6.2-py3-none-any.whl", hash = "sha256:66a0a6ec1f938ccb0d05601459822e0afb327825bc1136811301b8b062d239d2"},
-    {file = "raster2stac-2026.6.2.tar.gz", hash = "sha256:5bd0b5edd4c8dfe6625babfb611742165b1c70215ba81c6d0df6904457039410"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 boto3 = "*"
@@ -5127,6 +5125,12 @@ stac-validator = "*"
 ujson = "*"
 xarray = ">=2024.10.0,<2026.0.0"
 zarr = ">=2.18.3,<4"
+
+[package.source]
+type = "git"
+url = "https://gitlab.inf.unibz.it/earth_observation_public/raster-to-stac.git"
+reference = "trial-save-result-dev-backend"
+resolved_reference = "b7727ecf42e51ff6c33fe96cbe2c479a99775032"
 
 [[package]]
 name = "rasterio"
@@ -6790,4 +6794,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "ee632d4645ae930916cf1c6a084f7e9e114573a62d5a21a4e7f19da320c67a5b"
+content-hash = "600d5a06b6e414d62764aa46a268f6b436319ab0aa67738686d48659773b245a"

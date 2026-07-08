@@ -394,4 +394,3 @@ def _resolve_local_href(href: Optional[str], base: Path) -> Optional[Path]:
     if not path.is_absolute():
         path = base / href.lstrip("./")
     return path
-
