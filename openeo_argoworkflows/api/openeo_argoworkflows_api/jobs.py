@@ -48,7 +48,7 @@ class UserWorkspace(BaseModel):
 
     root_dir: Path
     user_id: Union[str, uuid.UUID]
-    job_id: Optional[Union[str, uuid.UUID]]
+    job_id: Optional[Union[str, uuid.UUID]] = None
 
     def ensure(self, path: Path) -> Path:
         if not path.exists():

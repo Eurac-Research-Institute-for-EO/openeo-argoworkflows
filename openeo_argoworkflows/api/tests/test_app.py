@@ -38,7 +38,7 @@ def test_app_settings():
     assert default_dask.DASK_WORKER_CORES == "4" 
     assert default_dask.DASK_WORKER_MEMORY == "8"
 
-    updated_dask = ExtendedAppSettings(DASK_WORKER_CORES=6, DASK_WORKER_MEMORY="16")
+    updated_dask = ExtendedAppSettings(DASK_WORKER_CORES="6", DASK_WORKER_MEMORY="16")
     assert updated_dask.DASK_WORKER_CORES == "6"
     assert updated_dask.DASK_WORKER_MEMORY == "16"
 

@@ -514,7 +514,7 @@ class JobsRequest(BaseModel):
     POST (/result)
     """
 
-    title: str = None
+    title: Optional[str] = None
     description: Optional[str] = None
     process: Optional[ProcessGraphWithMetadata] = None
     plan: Optional[str] = None

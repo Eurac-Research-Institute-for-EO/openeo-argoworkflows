@@ -29,14 +29,42 @@ gtif = FileFormat(
     parameters={},
 )
 
+cog = FileFormat(
+   title="COG",
+    gis_data_types=[GisDataType("raster")],
+    parameters={},
+)
+
 netcdf = FileFormat(
    title="netCDF",
     gis_data_types=[GisDataType("raster")],
     parameters={},
 )
 
+zarr = FileFormat(
+   title="Zarr",
+    gis_data_types=[GisDataType("raster")],
+    parameters={
+        "zarr_format": {
+            "type": "integer",
+            "default": 3,
+            "description": "Zarr format version: 2 or 3.",
+        },
+        "consolidated": {
+            "type": "boolean",
+            "default": None,
+            "description": "Consolidate Zarr metadata (v2 only).",
+        },
+        "chunks": {
+            "type": "object",
+            "default": None,
+            "description": "Chunk sizes per dimension, e.g. {'x': 256, 'y': 256}.",
+        },
+    },
+)
+
 input_formats = [ gtif, netcdf ]
-output_formats = [ netcdf ]
+output_formats = [ gtif, cog, netcdf, zarr ]
 
 links = []
 

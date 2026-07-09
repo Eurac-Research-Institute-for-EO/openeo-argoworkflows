@@ -1,44 +1,56 @@
 ARG PYTHON_VERSION="3.12"
+ARG CONDA_PYTHON_VERSION="3.12"
+ARG MICROMAMBA_VERSION="2.3.3"
+FROM mambaorg/micromamba:${MICROMAMBA_VERSION} AS micromamba
+
 FROM python:${PYTHON_VERSION}-slim-bookworm AS base
 
 WORKDIR /opt
+ARG CONDA_PYTHON_VERSION="3.12"
 ARG POETRY_VERSION="2.4.1"
+ARG GDAL_VERSION="3.13.1"
 
 ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 ENV POETRY_HOME=/opt/poetry
 ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
+ENV CONDA_PREFIX=${VIRTUAL_ENV}
+ENV MAMBA_ROOT_PREFIX=/opt/micromamba
+ENV LD_LIBRARY_PATH=${VIRTUAL_ENV}/lib
+ENV GDAL_DATA=${VIRTUAL_ENV}/share/gdal
+ENV PROJ_DATA=${VIRTUAL_ENV}/share/proj
+
+COPY --from=micromamba /usr/bin/micromamba /usr/local/bin/micromamba
 
 COPY ./openeo_argoworkflows/executor/README.md ./openeo_argoworkflows/executor/pyproject.toml ./openeo_argoworkflows/executor/poetry.lock /opt/
 
-RUN python3 -m venv $VIRTUAL_ENV && \
+RUN micromamba create -y -p $VIRTUAL_ENV --override-channels -c conda-forge \
+        "python=${CONDA_PYTHON_VERSION}" \
+        "gdal=${GDAL_VERSION}" \
+        pip && \
+    micromamba clean -a -y && \
     $VIRTUAL_ENV/bin/pip install -U pip setuptools && \
     $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION} poetry-plugin-export
 
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ git && rm -rf /var/lib/apt/lists/* && \
+RUN apt-get update && apt-get install -y --no-install-recommends g++ git && rm -rf /var/lib/apt/lists/* && \
     git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-# Install GDAL Python bindings matching system libgdal version.
-# xcube-eopf (from EURAC processes-dask) requires gdal, but the PyPI version
-# must match the system libgdal headers exactly.
-RUN GDAL_VERSION=$(gdal-config --version) && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir "gdal==${GDAL_VERSION}"
-
-# Export dependencies from poetry lock, exclude gdal (already installed from system),
-# then install via pip. This avoids poetry trying to build gdal 3.12.2 against
-# system libgdal 3.6.2 headers which causes a version mismatch build failure.
+# Export dependencies from poetry lock, exclude gdal (installed from conda-forge)
+# and packages that declare the gdal extra, then install via pip. This avoids
+# poetry/pip trying to replace the conda-forge GDAL library and Python bindings.
 #
-# openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac.2
+# openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac-dev.1
 # (tag), but poetry export resolves our own openeo-processes-dask dep to the commit
 # hash. Pip sees two different Git references for the same package and refuses.
-# Workaround: install save-result directly from its repo with --no-deps after the
-# main install — all its transitive deps are already included in the core export.
+# Workaround: install both direct Git packages with --no-deps after the main install;
+# all their transitive deps except gdal are already included in the core export.
 RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
-    grep -v "^gdal==" /tmp/requirements.txt | grep -v "openeo-processes-save-result" > /tmp/requirements-core.txt && \
+    grep -Ev "^(gdal|openeo-processes-dask|openeo-processes-save-result)" /tmp/requirements.txt > /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
-        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.10-eurac.1" && \
+        "openeo-processes-dask @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git@v2026.7.1-eurac-dev.1" \
+        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.1-eurac-dev.1" && \
     rm /tmp/requirements.txt /tmp/requirements-core.txt
 
 # Create the openeo_executor CLI entry point script directly.
@@ -65,14 +77,16 @@ WORKDIR /opt/openeo_argoworkflows_executor
 COPY --from=base --chown=${USER_ID}:${GROUP_ID} /opt/openeo_argoworkflows_executor/.venv /opt/openeo_argoworkflows_executor/.venv
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows/executor/openeo_argoworkflows_executor /opt/openeo_argoworkflows_executor
 
-RUN apt-get update && apt-get install -y libexpat1 libgdal32 nodejs && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*
 
-RUN ln -sf /usr/local/bin/python /opt/openeo_argoworkflows_executor/.venv/bin/python \
-    && ln -sf /usr/local/bin/python3 /opt/openeo_argoworkflows_executor/.venv/bin/python3 \
-    && groupadd -g ${GROUP_ID} -o executor \
+RUN groupadd -g ${GROUP_ID} -o executor \
     && useradd -m -u ${USER_ID} -g ${GROUP_ID} -o -s /bin/bash executor
 
 ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
+ENV CONDA_PREFIX=${VIRTUAL_ENV}
+ENV LD_LIBRARY_PATH=${VIRTUAL_ENV}/lib
+ENV GDAL_DATA=${VIRTUAL_ENV}/share/gdal
+ENV PROJ_DATA=${VIRTUAL_ENV}/share/proj
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV DASK_GATEWAY_SERVER="http://traefik-openeo-dask-gateway.openeo.svc.cluster.local:80"
 ENV PYTHONPATH="/opt"

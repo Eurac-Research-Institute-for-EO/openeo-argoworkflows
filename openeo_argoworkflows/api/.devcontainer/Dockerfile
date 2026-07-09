@@ -1,4 +1,4 @@
-ARG VARIANT="3.11-bookworm"
+ARG VARIANT="3.12-bookworm"
 FROM mcr.microsoft.com/devcontainers/python:1-${VARIANT} as devcontainer
 
 ENV POETRY_VIRTUALENVS_IN_PROJECT 1
