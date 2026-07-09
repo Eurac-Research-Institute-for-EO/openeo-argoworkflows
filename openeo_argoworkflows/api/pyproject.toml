@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openeo-argoworkflows-api"
-version = "2025.5.1"
+version = "2026.6.1"
 description = ""
 authors = ["sean <sean.hoyal@external.eodc.eu>"]
 readme = "README.md"
@@ -8,14 +8,15 @@ packages = [{include = "openeo_argoworkflows_api"}]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-openeo_fastapi = "^2025.5.1"
+openeo_fastapi = "^2026.6.1"
 hera = "^5.15.1"
 python-multipart = "^0.0.16"
 redis = "5.0.4"
 rq = "1.16.2"
-openeo-pg-parser-networkx = "*"
-# cwl_inputs.py parses CWL YAML; was only ever pulled in transitively (via the
-# removed openeo-processes-dask-slim, #154) — declare it explicitly.
+# EU: Process specs come from our own fork (v2026.7.1-eurac-dev.1).
+# The upstream openeo_fastapi 2026.6.1 uses openeo-processes-dask-slim
+# internally; we patch processes.py to point at our fork instead.
+openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.1"}
 pyyaml = "*"
 boto3 = ">=1.26.0"
 
