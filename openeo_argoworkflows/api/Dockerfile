@@ -21,16 +21,8 @@ ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
 RUN poetry install --only main
 
-# Patch openeo-fastapi library:
-# - core.py: env-based OIDC config (replace hardcoded EGI Check-in)
-# - auth.py: disable JWT audience validation for EURAC Keycloak
-# - types.py: extend Dimension model to preserve band names and spatial metadata
-# - collections.py: normalize dimension names to OpenEO standard (x, y, t, bands)
-COPY ./patches/openeo_fastapi_core.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/core.py
-COPY ./patches/openeo_fastapi_auth.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/auth.py
-COPY ./patches/openeo_fastapi_types.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/api/types.py
-COPY ./patches/openeo_fastapi_collections.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/collections.py
-COPY ./patches/openeo_fastapi_models.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/api/models.py
+# Patches no longer needed — all EURAC customizations are baked directly into
+# the openeo-fastapi fork at tag v2026.7.1-eurac-dev.1.
 
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows_api /opt/openeo_argoworkflows_api
 

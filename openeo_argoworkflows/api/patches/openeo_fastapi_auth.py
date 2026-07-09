@@ -11,7 +11,7 @@ import datetime
 import uuid
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 import requests
 from fastapi import Header, HTTPException
@@ -130,7 +130,7 @@ class IssuerHandler(BaseModel):
     """General token handler for querying provided tokens against issuers."""
 
     issuer_uri: str
-    policies: list[str] = None
+    policies: Optional[list[str]] = None
 
     @validator("issuer_uri", pre=True)
     def remove_trailing_slash(cls, v, values, **kwargs):

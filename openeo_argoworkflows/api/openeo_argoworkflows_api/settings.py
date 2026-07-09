@@ -6,16 +6,16 @@ from openeo_fastapi.client.settings import AppSettings
 
 class ExtendedAppSettings(AppSettings):
         
-    OPENEO_WORKSPACE_ROOT: Optional[Path]
-    OPENEO_EXECUTOR_IMAGE: Optional[str]
-    OPENEO_SIGN_KEY: Optional[str]
+    OPENEO_WORKSPACE_ROOT: Optional[Path] = None
+    OPENEO_EXECUTOR_IMAGE: Optional[str] = None
+    OPENEO_SIGN_KEY: Optional[str] = None
 
-    ARGO_WORKFLOWS_SERVER: Optional[AnyUrl]
-    ARGO_WORKFLOWS_NAMESPACE: Optional[str]
-    ARGO_WORKFLOWS_TOKEN: Optional[SecretStr]
+    ARGO_WORKFLOWS_SERVER: Optional[AnyUrl] = None
+    ARGO_WORKFLOWS_NAMESPACE: Optional[str] = None
+    ARGO_WORKFLOWS_TOKEN: Optional[SecretStr] = None
     ARGO_WORKFLOWS_LIMIT: int = 10
     
-    DASK_GATEWAY_SERVER: Optional[str]
+    DASK_GATEWAY_SERVER: Optional[str] = None
     DASK_WORKER_CORES: str = "4"
     DASK_WORKER_MEMORY: str = "8"
     DASK_WORKER_LIMIT: str = "6"

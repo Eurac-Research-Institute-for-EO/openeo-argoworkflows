@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openeo-argoworkflows-executor"
-version = "2025.5.1"
+version = "2026.7.1"
 description = ""
 authors = ["sean <sean.hoyal@external.eodc.eu>"]
 readme = "README.md"
@@ -11,7 +11,7 @@ python = ">=3.11,<3.14"
 dask-gateway = "^2024.1.0"
 openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.1", extras = ["implementations", "ml"]}
 openeo-processes-save-result = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git", tag = "v2026.7.1-eurac-dev.1"}
-openeo-pg-parser-networkx = ">=2024.4.0"
+openeo-pg-parser-networkx = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-pg-parser-networkx.git", tag = "v2026.7.1-eurac-dev.1"}
 pystac-client = ">=0.8.2,<1"
 click = ">=8.1.7"
 pydantic = "^2.7.0"

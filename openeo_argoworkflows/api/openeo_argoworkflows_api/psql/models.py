@@ -14,7 +14,8 @@ class ArgoJobORM(JobORM):
 
 class ArgoJob(Job):
 
-    workflowname: Optional[str]
+    title: Optional[str] = None
+    workflowname: Optional[str] = None
     """The name of the argo workflow."""
 
     message: Optional[str] = None

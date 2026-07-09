@@ -15,8 +15,8 @@ fs = fsspec.filesystem(protocol="file")
 
 __version__ = importlib.metadata.version("openeo_fastapi")
 
-OPENEO_WORKSPACE_ROOT = "/openeo-argoworkflows-api/tests/data/out"
 ALEMBIC_DIR = Path(__file__).parent.parent / "openeo_argoworkflows_api/psql/"
+OPENEO_WORKSPACE_ROOT = str(Path(__file__).parent / "data" / "out")
 
 SETTINGS_DICT = {
         "API_DNS": "test.api.org",
@@ -31,7 +31,8 @@ SETTINGS_DICT = {
         "ARGO_WORKFLOWS_NAMESPACE": "testing",
         "ARGO_WORKFLOWS_TOKEN": "atoken",
         "OPENEO_EXECUTOR_IMAGE": "testimage:2024.6.1",
-        "OPENEO_SIGN_KEY": "xx9Yp6whivS0wrC2CmIhxlJAMbfDugZw"
+        "OPENEO_SIGN_KEY": "xx9Yp6whivS0wrC2CmIhxlJAMbfDugZw",
+        "DASK_GATEWAY_SERVER": "http://not.real.dask-gateway.com/"
     }
 
 for k, v in SETTINGS_DICT.items():
@@ -77,6 +78,59 @@ def mock_links(uuid: uuid.UUID = uuid.uuid4()):
         )
     ]
 
+@pytest.fixture(scope="session")
+def postgresql_proc(request, tmp_path_factory):
+    """Session-scoped PostgreSQL process to avoid OOM from per-test PG instances."""
+    from pytest_postgresql.config import get_config
+    from pytest_postgresql.executor import PostgreSQLExecutor
+    from pytest_postgresql.janitor import DatabaseJanitor
+    import os
+    import shutil
+
+    config = get_config(request)
+    datadir = str(tmp_path_factory.mktemp("postgresql_data"))
+    pg_ctl = config["exec"]
+    if pg_ctl and not Path(pg_ctl).exists():
+        pg_ctl = shutil.which("pg_ctl")
+    if not pg_ctl:
+        installed_pg_ctl = sorted(Path("/usr/lib/postgresql").glob("*/bin/pg_ctl"))
+        if installed_pg_ctl:
+            pg_ctl = str(installed_pg_ctl[-1])
+
+    import port_for
+    pg_port = port_for.get_port(config["port"])
+    assert pg_port is not None
+
+    executor = PostgreSQLExecutor(
+        executable=pg_ctl,
+        host=config["host"],
+        port=pg_port,
+        datadir=datadir,
+        unixsocketdir=config["unixsocketdir"],
+        logfile=os.path.join(datadir, "pg.log"),
+        startparams=config["startparams"],
+        dbname=config["dbname"],
+        user=config["user"],
+        password=config["password"],
+        options=config["options"],
+        postgres_options=config["postgres_options"],
+    )
+    with executor:
+        executor.wait_for_postgres()
+        with DatabaseJanitor(
+            user=executor.user,
+            host=executor.host,
+            port=executor.port,
+            template_dbname=executor.template_dbname,
+            version=executor.version,
+            password=executor.password,
+        ) as janitor:
+            for load_element in config["load"]:
+                janitor.load(load_element)
+            yield executor
+    shutil.rmtree(datadir, ignore_errors=True)
+
+
 @pytest.fixture(scope="function")
 def mock_settings():
     return ExtendedAppSettings(**SETTINGS_DICT)
@@ -92,7 +146,7 @@ def mock_engine(postgresql):
     from alembic import command
     from alembic.config import Config
 
-    from openeo_fastapi.client.psql.engine import get_engine
+    from openeo_fastapi.client.psql import engine as engine_module
 
     os.chdir(Path(ALEMBIC_DIR))
 
@@ -108,9 +162,14 @@ def mock_engine(postgresql):
 
     command.upgrade(alembic_cfg, "head")
 
-    engine = get_engine()
+    if engine_module._engine is not None:
+        engine_module._engine.dispose()
+    engine_module._engine = None
 
-    return engine
+    engine = engine_module.get_engine()
+    yield engine
+    engine.dispose()
+    engine_module._engine = None
 
 @pytest.fixture(scope="module", autouse=True)
 def cleanup_out_folder():
