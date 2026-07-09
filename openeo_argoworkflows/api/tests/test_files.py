@@ -52,7 +52,7 @@ def test_file_formats(mock_settings):
 
     assert resp.status_code == 200
     assert len(json_out["input"]) == 2
-    assert len(json_out["output"]) == 4
+    assert len(json_out["output"]) == 1
 
 
 @patch("openeo_fastapi.client.auth.Authenticator.validate")

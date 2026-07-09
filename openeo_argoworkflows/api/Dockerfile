@@ -26,13 +26,11 @@ RUN poetry install --only main
 # - auth.py: disable JWT audience validation for EURAC Keycloak
 # - types.py: extend Dimension model to preserve band names and spatial metadata
 # - collections.py: normalize dimension names to OpenEO standard (x, y, t, bands)
-# - processes.py: use EURAC openeo-processes-dask fork for process specs
 COPY ./patches/openeo_fastapi_core.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/core.py
 COPY ./patches/openeo_fastapi_auth.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/auth.py
 COPY ./patches/openeo_fastapi_types.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/api/types.py
 COPY ./patches/openeo_fastapi_collections.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/collections.py
 COPY ./patches/openeo_fastapi_models.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/api/models.py
-COPY ./patches/openeo_fastapi_processes.py ${VIRTUAL_ENV}/lib/python3.11/site-packages/openeo_fastapi/client/processes.py
 
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows_api /opt/openeo_argoworkflows_api
 

@@ -19,7 +19,6 @@ class DinensionEnum(Enum):
     temporal = "temporal"
     bands = "bands"
     other = "other"
-    number = "number"
 
 
 class Type5(Enum):
