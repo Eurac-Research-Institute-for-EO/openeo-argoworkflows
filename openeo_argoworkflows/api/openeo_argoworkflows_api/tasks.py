@@ -67,7 +67,7 @@ def queue_to_submit(job: ArgoJob):
 
     if settings.ARGO_WORKFLOWS_SERVER:
         argo = WorkflowsService(
-            host=settings.ARGO_WORKFLOWS_SERVER,
+            host=str(settings.ARGO_WORKFLOWS_SERVER),
             verify_ssl=False,
             namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
             token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
@@ -94,7 +94,7 @@ def queue_to_submit(job: ArgoJob):
 def submit_job(job: ArgoJob):
     """Submit the job to argo."""
     argo = WorkflowsService(
-        host=settings.ARGO_WORKFLOWS_SERVER,
+        host=str(settings.ARGO_WORKFLOWS_SERVER),
         verify_ssl=False,
         namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
@@ -161,7 +161,7 @@ def poll_job_status(job: ArgoJob, metadata: Any):
         return
 
     argo = WorkflowsService(
-        host=settings.ARGO_WORKFLOWS_SERVER,
+        host=str(settings.ARGO_WORKFLOWS_SERVER),
         verify_ssl=False,
         namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
         token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),

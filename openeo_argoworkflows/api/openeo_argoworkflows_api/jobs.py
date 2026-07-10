@@ -83,7 +83,7 @@ class ArgoJobsRegister(JobsRegister):
         super().__init__(settings, links)
 
         self.workflows_service = WorkflowsService(
-            host=settings.ARGO_WORKFLOWS_SERVER,
+            host=str(settings.ARGO_WORKFLOWS_SERVER),
             verify_ssl=False,
             namespace=settings.ARGO_WORKFLOWS_NAMESPACE,
             token=settings.ARGO_WORKFLOWS_TOKEN.get_secret_value(),
