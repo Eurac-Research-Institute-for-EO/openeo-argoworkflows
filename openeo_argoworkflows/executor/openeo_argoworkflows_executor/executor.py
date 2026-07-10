@@ -29,15 +29,18 @@ def _register_processes_from_module(
     ]
 
     specs_module = importlib.import_module(f"{source}.{specs_dir}")
-    specs = {
-        func.__name__: getattr(specs_module, func.__name__)
-        for func in processes_from_module
-    }
 
     for func in processes_from_module:
-        process_registry[func.__name__] = Process(
-            spec=specs[func.__name__], implementation=func
-        )
+        spec = getattr(specs_module, func.__name__, None)
+        if spec is None:
+            logger.warning(
+                "Skipping process %r: no spec found in %s.%s",
+                func.__name__,
+                source,
+                specs_dir,
+            )
+            continue
+        process_registry[func.__name__] = Process(spec=spec, implementation=func)
 
     return process_registry
 
