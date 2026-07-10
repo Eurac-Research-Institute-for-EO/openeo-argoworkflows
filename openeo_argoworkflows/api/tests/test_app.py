@@ -1,41 +1,34 @@
 import datetime
+from unittest.mock import MagicMock, patch
+
 import fsspec
-
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
-
-from openeo_fastapi.client.psql.engine import create
-from openeo_argoworkflows_api.app import client
-from openeo_argoworkflows_api.jobs import ArgoJobsRegister, UserWorkspace
-from openeo_argoworkflows_api.auth import ExtendedAuthenticator
-from openeo_argoworkflows_api.settings import ExtendedAppSettings
-
 from openeo_argoworkflows_api.app import app as app_api
+from openeo_argoworkflows_api.app import client
+from openeo_argoworkflows_api.auth import ExtendedAuthenticator
+from openeo_argoworkflows_api.jobs import ArgoJobsRegister, UserWorkspace
+from openeo_argoworkflows_api.settings import ExtendedAppSettings
+from openeo_fastapi.client.psql.engine import create
+
 
 def test_jobs_is_argo():
     """Test the OpenEOApi and OpenEOCore classes interact as intended."""
 
     assert isinstance(client.jobs, ArgoJobsRegister)
 
-def test_app_settings():
 
-    blank_policies = ExtendedAppSettings(
-        OIDC_POLICIES = ""
-    )
+def test_app_settings():
+    blank_policies = ExtendedAppSettings(OIDC_POLICIES="")
     assert not blank_policies.OIDC_POLICIES
 
-    single_policy = ExtendedAppSettings(
-        OIDC_POLICIES = "groups, /staff"
-    )
+    single_policy = ExtendedAppSettings(OIDC_POLICIES="groups, /staff")
     assert single_policy.OIDC_POLICIES == ["groups,/staff"]
 
-    multi_policy = ExtendedAppSettings(
-        OIDC_POLICIES = "groups, /staff && groups, /users"
-    )
+    multi_policy = ExtendedAppSettings(OIDC_POLICIES="groups, /staff && groups, /users")
     assert multi_policy.OIDC_POLICIES == ["groups,/staff", "groups,/users"]
 
     default_dask = ExtendedAppSettings()
-    assert default_dask.DASK_WORKER_CORES == "4" 
+    assert default_dask.DASK_WORKER_CORES == "4"
     assert default_dask.DASK_WORKER_MEMORY == "8"
 
     updated_dask = ExtendedAppSettings(DASK_WORKER_CORES="6", DASK_WORKER_MEMORY="16")
@@ -55,7 +48,7 @@ def test_signed_urls(a_mock_user, a_mock_job, mock_settings):
     workspace = UserWorkspace(
         user_id=str(a_mock_user.user_id),
         job_id=str(a_mock_job.job_id),
-        root_dir=mock_settings.OPENEO_WORKSPACE_ROOT.parent / "out"
+        root_dir=mock_settings.OPENEO_WORKSPACE_ROOT.parent / "out",
     )
 
     # # Ensure 'job workspace' exists
@@ -66,14 +59,15 @@ def test_signed_urls(a_mock_user, a_mock_job, mock_settings):
         mock_settings.OPENEO_WORKSPACE_ROOT.parent / "fake-process-graph.json"
     )
 
-    fs.copy(
-        original_file, str(workspace.results_directory / "fake-process-graph.json" )
-    )
+    fs.copy(original_file, str(workspace.results_directory / "fake-process-graph.json"))
 
     test_path = f"{mock_settings.OPENEO_PREFIX}/files/{str(a_mock_job.job_id)}/RESULTS/fake-process-graph.json"
 
     signed = ExtendedAuthenticator.sign_url(
-        test_path, "OPENEO_SIGN_KEY", str(a_mock_user.user_id), datetime.datetime.fromtimestamp(1678692590)
+        test_path,
+        "OPENEO_SIGN_KEY",
+        str(a_mock_user.user_id),
+        datetime.datetime.fromtimestamp(1678692590),
     )
 
     app = TestClient(app_api)
@@ -84,9 +78,11 @@ def test_signed_urls(a_mock_user, a_mock_job, mock_settings):
 
 def test_cancel_queued_job_via_http(mock_engine, a_mock_user, mock_settings):
     """DELETE /jobs/{id}/results on a queued job must return 204 without calling Argo."""
-    import uuid, datetime
-    from openeo_fastapi.client.psql.engine import create, get
+    import datetime
+    import uuid
+
     from openeo_argoworkflows_api.jobs import ArgoJob
+    from openeo_fastapi.client.psql.engine import create, get
 
     job = ArgoJob(
         job_id=uuid.uuid4(),

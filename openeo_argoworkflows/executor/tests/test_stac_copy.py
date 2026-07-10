@@ -49,7 +49,6 @@ def _make_calrissian_outdir_directory(base: Path) -> Path:
 
 
 class TestStacRootRename:
-
     def _run_stac_copy(self, calrissian_outdir: Path, workspace: Path, job_id: str):
         """Replicate the STAC copy/rename block from run_cwl."""
         stac_root = _find_stac_root(calrissian_outdir)
@@ -89,8 +88,9 @@ class TestStacRootRename:
 
             stac_path = self._run_stac_copy(outdir, workspace, "job-xyz-456")
 
-            assert (stac_path / "job-xyz-456.json").exists(), \
-                "collection.json from subdirectory must be renamed to {job_id}.json at STAC root"
+            assert (
+                stac_path / "job-xyz-456.json"
+            ).exists(), "collection.json from subdirectory must be renamed to {job_id}.json at STAC root"
 
     def test_directory_output_tif_files_at_stac_root(self):
         """GeoTIFF files from subdir must land directly at STAC/ root, not in a subdir.

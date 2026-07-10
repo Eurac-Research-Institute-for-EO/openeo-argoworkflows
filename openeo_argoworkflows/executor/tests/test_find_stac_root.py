@@ -23,7 +23,6 @@ def _write_json(path: Path, data: dict):
 
 
 class TestFindStacRoot:
-
     def test_finds_catalog_at_top_level(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)

@@ -10,8 +10,8 @@ When: GET /jobs/{id}/results is called
 Then: asset hrefs are the existing signed API file URLs (backward compatible)
 """
 import os
-import pytest
 
+import pytest
 from openeo_argoworkflows_api.s3 import generate_presigned_url, is_s3_uri
 
 
@@ -39,7 +39,10 @@ def test_generate_presigned_url_returns_proxy_url():
         api_base="https://openeo.eurac.edu",
         openeo_prefix="/openeo/1.1.0",
     )
-    assert url == "https://openeo.eurac.edu/openeo/1.1.0/jobs/job-456/results/download/result.nc"
+    assert (
+        url
+        == "https://openeo.eurac.edu/openeo/1.1.0/jobs/job-456/results/download/result.nc"
+    )
 
 
 # Given: an S3 URI without job_id/api_base

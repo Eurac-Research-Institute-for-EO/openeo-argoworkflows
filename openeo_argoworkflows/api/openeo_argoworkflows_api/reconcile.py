@@ -8,12 +8,10 @@ and message accordingly.
 import logging
 import os
 
-from openeo_fastapi.api.types import Status
-from openeo_fastapi.client.psql.engine import get_engine, modify
-
 from openeo_argoworkflows_api.psql.models import ArgoJob, ArgoJobORM
 from openeo_argoworkflows_api.workflows import WorkflowsService
-
+from openeo_fastapi.api.types import Status
+from openeo_fastapi.client.psql.engine import get_engine, modify
 from sqlalchemy.orm import sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -43,9 +41,11 @@ def reconcile():
     engine = get_engine()
     Session = sessionmaker(bind=engine)
     with Session() as session:
-        rows = session.query(ArgoJobORM).filter(
-            ArgoJobORM.status == Status.running.value
-        ).all()
+        rows = (
+            session.query(ArgoJobORM)
+            .filter(ArgoJobORM.status == Status.running.value)
+            .all()
+        )
         running_jobs = [ArgoJob.model_validate(r) for r in rows]
 
     if not running_jobs:
@@ -57,7 +57,9 @@ def reconcile():
     for job in running_jobs:
         if not job.workflowname:
             job.status = Status.error
-            job.message = "Job has no associated workflow and will not complete. Please resubmit."
+            job.message = (
+                "Job has no associated workflow and will not complete. Please resubmit."
+            )
             modify(job)
             logger.warning(f"Job {job.job_id} had no workflowname — marked as error.")
             continue
@@ -70,9 +72,13 @@ def reconcile():
             phase = getattr(workflow.status, "phase", None)
         except Exception:
             job.status = Status.error
-            job.message = "Workflow could not be found. It may have been deleted or expired."
+            job.message = (
+                "Workflow could not be found. It may have been deleted or expired."
+            )
             modify(job)
-            logger.warning(f"Job {job.job_id} workflow {job.workflowname} not found — marked as error.")
+            logger.warning(
+                f"Job {job.job_id} workflow {job.workflowname} not found — marked as error."
+            )
             continue
 
         if phase == "Succeeded":

@@ -12,7 +12,7 @@ Scenarios:
 
 import importlib.util
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -27,7 +27,6 @@ run_udf = _cwl.run_udf
 
 
 class TestRunUdf:
-
     def _mock_run_cwl(self, mocker=None):
         """Patch run_cwl on the cwl module and return the mock."""
         return patch.object(_cwl, "run_cwl", return_value={"status": "completed"})
@@ -42,7 +41,12 @@ class TestRunUdf:
 
     def test_data_none_does_not_inject_openeo_data(self):
         with self._mock_run_cwl() as mock_cwl:
-            run_udf(data=None, udf="workflow.cwl", runtime="eoap-cwl", context={"key": "val"})
+            run_udf(
+                data=None,
+                udf="workflow.cwl",
+                runtime="eoap-cwl",
+                context={"key": "val"},
+            )
             assert "openeo_data" not in self._get_inputs(mock_cwl)
 
     def test_data_file_path_injects_openeo_data(self):
@@ -56,14 +60,19 @@ class TestRunUdf:
             inputs = self._get_inputs(mock_cwl)
             assert "openeo_data" in inputs
             assert inputs["openeo_data"]["class"] == "File"
-            assert "file:///user_workspaces/user123/results/output.nc" in inputs["openeo_data"]["location"]
+            assert (
+                "file:///user_workspaces/user123/results/output.nc"
+                in inputs["openeo_data"]["location"]
+            )
 
     def test_data_directory_path_injects_openeo_data_directory(self, tmp_path):
         data_dir = tmp_path / "result.zarr"
         data_dir.mkdir()
 
         with self._mock_run_cwl() as mock_cwl:
-            run_udf(data=str(data_dir), udf="workflow.cwl", runtime="eoap-cwl", context={})
+            run_udf(
+                data=str(data_dir), udf="workflow.cwl", runtime="eoap-cwl", context={}
+            )
             inputs = self._get_inputs(mock_cwl)
             assert inputs["openeo_data"]["class"] == "Directory"
             assert inputs["openeo_data"]["location"] == f"file://{data_dir}"
@@ -71,7 +80,12 @@ class TestRunUdf:
     def test_data_non_path_string_does_not_inject(self):
         """A relative string or non-path value must not be treated as a file."""
         with self._mock_run_cwl() as mock_cwl:
-            run_udf(data="some-string-value", udf="workflow.cwl", runtime="eoap-cwl", context={})
+            run_udf(
+                data="some-string-value",
+                udf="workflow.cwl",
+                runtime="eoap-cwl",
+                context={},
+            )
             assert "openeo_data" not in self._get_inputs(mock_cwl)
 
     def test_data_xarray_like_does_not_crash(self):
@@ -79,13 +93,20 @@ class TestRunUdf:
         fake_xarray = MagicMock()
         fake_xarray.__str__ = lambda self: "<DataArray>"
         with self._mock_run_cwl() as mock_cwl:
-            run_udf(data=fake_xarray, udf="workflow.cwl", runtime="eoap-cwl", context={})
+            run_udf(
+                data=fake_xarray, udf="workflow.cwl", runtime="eoap-cwl", context={}
+            )
             assert "openeo_data" not in self._get_inputs(mock_cwl)
 
     def test_data_dict_does_not_crash(self):
         """dict data (xr.Dataset-like) must be silently ignored."""
         with self._mock_run_cwl() as mock_cwl:
-            run_udf(data={"variable": "B04"}, udf="workflow.cwl", runtime="eoap-cwl", context={})
+            run_udf(
+                data={"variable": "B04"},
+                udf="workflow.cwl",
+                runtime="eoap-cwl",
+                context={},
+            )
             assert "openeo_data" not in self._get_inputs(mock_cwl)
 
     def test_context_inputs_passed_through(self):
@@ -95,7 +116,10 @@ class TestRunUdf:
                 data=None,
                 udf="workflow.cwl",
                 runtime="eoap-cwl",
-                context={"date_range": ["2022-01-01", "2022-12-31"], "aoi": "POLYGON(...)"},
+                context={
+                    "date_range": ["2022-01-01", "2022-12-31"],
+                    "aoi": "POLYGON(...)",
+                },
             )
             inputs = self._get_inputs(mock_cwl)
             assert inputs["date_range"] == ["2022-01-01", "2022-12-31"]

@@ -73,7 +73,9 @@ def _find_stac_collections(results_path: str) -> list[Path]:
 
     collections = []
     for candidate in sorted(Path(results_path).rglob("*.json")):
-        if any(part.startswith(".") for part in candidate.relative_to(results_path).parts):
+        if any(
+            part.startswith(".") for part in candidate.relative_to(results_path).parts
+        ):
             continue
         try:
             with open(candidate) as f:

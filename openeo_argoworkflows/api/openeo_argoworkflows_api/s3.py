@@ -21,7 +21,13 @@ def is_s3_uri(href: str) -> bool:
     return href.startswith("s3://")
 
 
-def generate_presigned_url(href: str, job_id: str = None, api_base: str = None, openeo_prefix: str = "/openeo/1.1.0", expiry_seconds: int = 0) -> str:
+def generate_presigned_url(
+    href: str,
+    job_id: str = None,
+    api_base: str = None,
+    openeo_prefix: str = "/openeo/1.1.0",
+    expiry_seconds: int = 0,
+) -> str:
     """Return a proxy download URL for an S3 URI, or href unchanged if not S3.
 
     Routes the download through the API pod to avoid CORS issues with CEPH.
@@ -39,13 +45,13 @@ def generate_presigned_url(href: str, job_id: str = None, api_base: str = None, 
 
     # Fallback: direct public URL
     endpoint_url = os.environ.get("S3_ENDPOINT_URL", "https://s3.scientificnet.org")
-    without_scheme = href[len("s3://"):]
+    without_scheme = href[len("s3://") :]
     url = f"{endpoint_url.rstrip('/')}/{without_scheme}"
     logger.info("Resolved S3 URI to public URL: %s", url)
     return url
 
 
-def s3_download_stream(href: str) -> Tuple:
+def s3_download_stream(href: str) -> tuple:
     """Fetch an S3 object and return (body, content_length, content_type).
 
     Used by the proxy download endpoint to stream files to the browser,
@@ -61,7 +67,7 @@ def s3_download_stream(href: str) -> Tuple:
     access_key = os.environ.get("S3_ACCESS_KEY")
     secret_key = os.environ.get("S3_SECRET_KEY")
 
-    without_scheme = href[len("s3://"):]
+    without_scheme = href[len("s3://") :]
     _bucket, _, key = without_scheme.partition("/")
 
     client = boto3.client(

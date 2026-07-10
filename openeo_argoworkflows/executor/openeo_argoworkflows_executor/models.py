@@ -1,11 +1,11 @@
 from pathlib import Path
-from pydantic import BaseModel, model_validator
 from typing import Any, Optional
+
 from openeo_pg_parser_networkx.graph import OpenEOProcessGraph
+from pydantic import BaseModel, model_validator
 
 
 class UserProfile(BaseModel):
-
     OPENEO_USER_ID: str
     OPENEO_JOB_ID: str
     OPENEO_USER_WORKSPACE: Path
@@ -26,11 +26,9 @@ class UserProfile(BaseModel):
 
 
 class ClusterProfile(BaseModel):
-
-
     GATEWAY_URL: Optional[str] = None
     OPENEO_EXECUTOR_IMAGE: Optional[str] = None
-    
+
     LOCAL: bool = False
 
     CLUSTER_IDLE_TIMEOUT: int = 3600
@@ -39,19 +37,17 @@ class ClusterProfile(BaseModel):
     WORKER_MEMORY: int = 8
     WORKER_LIMIT: int = 4
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def when_local_omit_all(cls, data: Any) -> Any:
-    
         assert not (
-            "LOCAL" in data.keys() and ( "GATEWAY_URL" in data.keys() or "OPENEO_EXECUTOR_IMAGE" in data.keys() )
+            "LOCAL" in data.keys()
+            and ("GATEWAY_URL" in data.keys() or "OPENEO_EXECUTOR_IMAGE" in data.keys())
         ), "Cannot initialise a local cluster and also a remote cluster"
         return data
 
 
-
 class ExecutorParameters(BaseModel):
-
     process_graph: dict
     user_profile: UserProfile
     dask_profile: ClusterProfile
