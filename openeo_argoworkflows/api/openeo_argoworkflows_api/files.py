@@ -1,4 +1,5 @@
 import datetime
+import io
 import json
 import re
 from os.path import splitext
@@ -80,11 +81,6 @@ class ArgoFileRegister(FilesRegister):
         absolute_path = user_workspace / path
         try:
             fs.exists(absolute_path)
-            if not fs.isfile(absolute_path):
-                raise HTTPException(
-                    status_code=405,
-                    detail=f"Path must lead to file, {absolute_path} resolves to a directory.",
-                )
         except FileNotFoundError:
             raise HTTPException(
                 status_code=404, detail="File not found in user workspace."
@@ -97,15 +93,23 @@ class ArgoFileRegister(FilesRegister):
         path: str,
         user: User = Depends(ExtendedAuthenticator.signed_url_or_validate),
     ):
-        """Get the headers for a file."""
+        """Get the headers for a file (or directory served as tar)."""
 
         absolute_path = self.validate_path(path, user)
+        if fs.isfile(absolute_path):
+            return Response(
+                status_code=200,
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": str(fs.size(absolute_path)),
+                },
+            )
+        # Directory — served as a tar archive
         return Response(
             status_code=200,
             headers={
-                "Accept-Ranges": "bytes",
-                "Content-Type": "application/octet-stream",
-                "Content-Length": str(fs.size(absolute_path)),
+                "Content-Type": "application/x-tar",
             },
         )
 
@@ -117,6 +121,7 @@ class ArgoFileRegister(FilesRegister):
     ):
         """
         Download a file from the workspace.
+        Directories are streamed as tar archives.
         """
 
         def iterfile(path: Path, range: ByteRange = None):
@@ -135,7 +140,30 @@ class ArgoFileRegister(FilesRegister):
                     while chunk := file_like.read(chunk_size):
                         yield chunk
 
+        def tar_stream(path: Path):
+            import tarfile
+            chunk_size = (1024 * 1024) * 4  # 4MB chunks for tar
+            buffer = io.BytesIO()
+            with tarfile.open(mode="w|", fileobj=buffer) as tar:
+                tar.add(path, arcname=path.name)
+                buffer.seek(0)
+                while chunk := buffer.read(chunk_size):
+                    yield chunk
+                buffer.seek(0)
+                buffer.truncate()
+
         absolute_path = self.validate_path(path, user)
+
+        # Serve directories as tar archives
+        if not fs.isfile(absolute_path):
+            return StreamingResponse(
+                status_code=200,
+                content=tar_stream(absolute_path),
+                media_type="application/x-tar",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{path.replace("/", "_")}.tar"',
+                },
+            )
 
         # Set media type for the file
         extention = splitext(absolute_path)[1]
