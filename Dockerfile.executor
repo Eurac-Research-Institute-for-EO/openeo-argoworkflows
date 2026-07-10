@@ -98,6 +98,14 @@ ENV PYTHONPATH="/opt"
 # expected paths resolve correctly.
 RUN mkdir -p /mainctrfs && ln -s /user_workspaces /mainctrfs/user_workspaces
 
+# Distributed 2026.x dropped standalone dask-scheduler/dask-worker entry
+# points in favour of "dask scheduler" / "dask worker" subcommands, but
+# Dask Gateway still hardcodes the legacy names for scheduler/worker pods.
+# Create wrapper scripts to bridge the gap.
+RUN printf '#!/bin/bash\nexec dask scheduler "$@"\n' > $VIRTUAL_ENV/bin/dask-scheduler && \
+    printf '#!/bin/bash\nexec dask worker "$@"\n' > $VIRTUAL_ENV/bin/dask-worker && \
+    chmod +x $VIRTUAL_ENV/bin/dask-scheduler $VIRTUAL_ENV/bin/dask-worker
+
 USER ${USER_ID}
 
 CMD ["openeo_executor"]
