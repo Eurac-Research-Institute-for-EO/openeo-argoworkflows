@@ -12,15 +12,13 @@ through the shared helper.
 import ast
 import inspect
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from openeo_argoworkflows_executor.http_utils import post_json, HTTP_TIMEOUT
+from openeo_argoworkflows_executor.http_utils import HTTP_TIMEOUT, post_json
 
 
 class TestPostJson:
-
     def test_passes_timeout_to_requests(self):
         with patch("openeo_argoworkflows_executor.http_utils.requests") as req:
             post_json("https://stac.example/collections", {"id": "c1"})
@@ -54,9 +52,7 @@ class TestNoBarePostsRemain:
     @pytest.mark.parametrize("module", ["cli.py", "stac_cwl.py"])
     def test_module_has_no_bare_requests_post(self, module):
         src = (
-            Path(__file__).parent.parent
-            / "openeo_argoworkflows_executor"
-            / module
+            Path(__file__).parent.parent / "openeo_argoworkflows_executor" / module
         ).read_text()
         tree = ast.parse(src)
         offenders = [

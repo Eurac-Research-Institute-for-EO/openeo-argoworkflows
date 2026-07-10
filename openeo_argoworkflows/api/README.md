@@ -40,7 +40,7 @@ You can create a .notebooks directory which will be git ignored. Here you can cr
 
 ###
 
-Tests are run via pytest and should be discoverable via vscode. 
+Tests are run via pytest and should be discoverable via vscode.
 
 Otherwise:
 ```

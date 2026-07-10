@@ -11,7 +11,7 @@ $graph:
       The generated interferograms are fully suitable for multi‑temporal interferometric analysis. In particular, the outputs can be directly used as input to multi‑temporal InSAR toolkits such as MintPy, enabling time‑series deformation analysis using methods like SBAS or Persistent Scatterer approaches.
 
       An example on how to use it:
-      
+
       ```python
       import openeo
 
@@ -35,7 +35,7 @@ $graph:
             "sub_swath": "IW2"
         }
       )
-      
+
       job = stac_resource.create_job(title="sentinel1_sar_interferogram test")
       job.start_and_wait()
       job.get_results().download_files()
@@ -63,7 +63,7 @@ $graph:
         type: int?
         default: 10
         doc: "Coherence window size in range direction"
-      
+
       coherence_window_az:
         type: int?
         default: 2

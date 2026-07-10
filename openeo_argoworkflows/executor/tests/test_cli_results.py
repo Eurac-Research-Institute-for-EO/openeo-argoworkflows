@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 import rioxarray  # noqa: F401
 import xarray as xr
-
 from openeo_argoworkflows_executor.cli import (
     _collect_result_files,
     _find_stac_collections,
@@ -97,6 +96,7 @@ def test_publish_stac_collection_normalizes_and_posts_collection_and_items(
 
 def _find_single_collection(directory: Path) -> Path:
     import json
+
     for f in sorted(directory.rglob("*.json")):
         try:
             payload = json.loads(f.read_text())
@@ -178,9 +178,9 @@ def test_publish_stac_collection_with_real_package_gtiff_rewrites_hrefs(
     for item_file in sorted((stac_dir / "items").glob("*.json")):
         published_item = json.loads(item_file.read_text())
         for asset in published_item["assets"].values():
-            assert asset["href"].startswith("s3://"), (
-                f"asset href should be S3 URI after publishing, got: {asset['href']}"
-            )
+            assert asset["href"].startswith(
+                "s3://"
+            ), f"asset href should be S3 URI after publishing, got: {asset['href']}"
     num_items = len(list((stac_dir / "items").glob("*.json")))
     assert len(posts) == 1 + num_items, "expected 1 collection + N items"
     assert posts[0][0] == "https://stac.example/"
@@ -226,9 +226,9 @@ def test_publish_stac_collection_with_real_package_netcdf_rewrites_hrefs(
     for item_file in sorted((stac_dir / "items").glob("*.json")):
         published_item = json.loads(item_file.read_text())
         for asset in published_item["assets"].values():
-            assert asset["href"].startswith("s3://"), (
-                f"asset href should be S3 URI after publishing, got: {asset['href']}"
-            )
+            assert asset["href"].startswith(
+                "s3://"
+            ), f"asset href should be S3 URI after publishing, got: {asset['href']}"
 
 
 def test_publish_stac_collection_with_real_package_zarr_does_not_pollute_directory(
@@ -261,8 +261,8 @@ def test_publish_stac_collection_with_real_package_zarr_does_not_pollute_directo
     )
 
     zarr_contents_after = sorted(result_dir.rglob("*"))
-    assert zarr_contents_before == zarr_contents_after, (
-        "STAC publishing must not add or remove files inside the Zarr directory"
-    )
+    assert (
+        zarr_contents_before == zarr_contents_after
+    ), "STAC publishing must not add or remove files inside the Zarr directory"
     published_items = sorted((stac_dir / "items").glob("*.json"))
     assert len(published_items) >= 1, "Expected at least one STAC item to be published"

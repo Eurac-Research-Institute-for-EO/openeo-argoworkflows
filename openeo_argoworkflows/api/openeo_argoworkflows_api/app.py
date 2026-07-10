@@ -1,4 +1,3 @@
-
 import json
 import uuid
 from pathlib import Path
@@ -7,42 +6,38 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from openeo_argoworkflows_api.files import ArgoFileRegister
+from openeo_argoworkflows_api.jobs import ArgoJobsRegister
+from openeo_argoworkflows_api.s3 import is_s3_uri, s3_download_stream
+from openeo_argoworkflows_api.settings import ExtendedAppSettings
+from openeo_fastapi.api.app import OpenEOApi
+from openeo_fastapi.api.types import Billing, FileFormat, GisDataType, Plan
+from openeo_fastapi.client.core import OpenEOCore
+from openeo_fastapi.client.psql.engine import get
+from openeo_pg_parser_networkx.process_registry import Process as pgProcess
 from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 
-from openeo_fastapi.client.psql.engine import get
-from openeo_argoworkflows_api.s3 import is_s3_uri, s3_download_stream
-
-from openeo_fastapi.api.app import OpenEOApi
-from openeo_fastapi.api.types import Billing, Plan, FileFormat, GisDataType
-from openeo_fastapi.client.core import OpenEOCore
-from openeo_pg_parser_networkx.process_registry import Process as pgProcess
-
-from openeo_argoworkflows_api.jobs import ArgoJobsRegister
-from openeo_argoworkflows_api.files import ArgoFileRegister
-from openeo_argoworkflows_api.settings import ExtendedAppSettings
-
-
 gtif = FileFormat(
-   title="GTiff",
+    title="GTiff",
     gis_data_types=[GisDataType("raster")],
     parameters={},
 )
 
 cog = FileFormat(
-   title="COG",
+    title="COG",
     gis_data_types=[GisDataType("raster")],
     parameters={},
 )
 
 netcdf = FileFormat(
-   title="netCDF",
+    title="netCDF",
     gis_data_types=[GisDataType("raster")],
     parameters={},
 )
 
 zarr = FileFormat(
-   title="Zarr",
+    title="Zarr",
     gis_data_types=[GisDataType("raster")],
     parameters={
         "zarr_format": {
@@ -63,8 +58,8 @@ zarr = FileFormat(
     },
 )
 
-input_formats = [ gtif, netcdf ]
-output_formats = [ gtif, cog, netcdf, zarr ]
+input_formats = [gtif, netcdf]
+output_formats = [gtif, cog, netcdf, zarr]
 
 links = []
 
@@ -81,7 +76,7 @@ client = OpenEOCore(
         currency="credits",
         default_plan="a-cloud",
         plans=[Plan(name="user", description="Subscription plan.", paid=True)],
-    )
+    ),
 )
 app = FastAPI()
 
@@ -133,6 +128,7 @@ api.app.add_middleware(
     ],
 )
 
+
 def s3_proxy_download(job_id: uuid.UUID, filename: str):
     """Proxy download for S3 result files — bypasses browser CORS restrictions.
 
@@ -147,21 +143,33 @@ def s3_proxy_download(job_id: uuid.UUID, filename: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     settings = ExtendedAppSettings()
-    import glob, json as _json
-    stac_items_dir = Path(settings.OPENEO_WORKSPACE_ROOT) / str(job.user_id) / str(job_id) / "STAC" / "items"
+    import glob
+    import json as _json
+
+    stac_items_dir = (
+        Path(settings.OPENEO_WORKSPACE_ROOT)
+        / str(job.user_id)
+        / str(job_id)
+        / "STAC"
+        / "items"
+    )
     href = None
     for item_path in glob.glob(str(stac_items_dir / "*.json")):
         with open(item_path) as f:
             item = _json.load(f)
         for asset in item.get("assets", {}).values():
-            if asset.get("href", "").endswith(filename) and is_s3_uri(asset.get("href", "")):
+            if asset.get("href", "").endswith(filename) and is_s3_uri(
+                asset.get("href", "")
+            ):
                 href = asset["href"]
                 break
         if href:
             break
 
     if not href:
-        raise HTTPException(status_code=404, detail=f"Result file '{filename}' not found or not on S3")
+        raise HTTPException(
+            status_code=404, detail=f"Result file '{filename}' not found or not on S3"
+        )
 
     try:
         body, content_length, content_type = s3_download_stream(href)
@@ -172,7 +180,9 @@ def s3_proxy_download(job_id: uuid.UUID, filename: str):
     if content_length:
         headers["Content-Length"] = str(content_length)
 
-    return StreamingResponse(body.iter_chunks(), media_type=content_type, headers=headers)
+    return StreamingResponse(
+        body.iter_chunks(), media_type=content_type, headers=headers
+    )
 
 
 class CwlInspectRequest(BaseModel):
@@ -180,6 +190,7 @@ class CwlInspectRequest(BaseModel):
 
     Provide exactly one of `url` (fetched over http/https) or `cwl` (inline doc).
     """
+
     url: Optional[str] = None
     cwl: Optional[str] = None
 
@@ -217,6 +228,7 @@ def cwl_inputs_inspect(body: CwlInspectRequest):
 
 def redirect_wellknown():
     return RedirectResponse("/.well-known/openeo")
+
 
 api.app.router.add_api_route(
     name="redirect_wellknown",

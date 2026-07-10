@@ -11,7 +11,6 @@ import pytest
 import rioxarray  # noqa: F401  registers .rio accessor
 import xarray as xr
 
-
 _io_spec = importlib.util.spec_from_file_location(
     "io_impl",
     Path(__file__).parent.parent

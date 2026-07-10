@@ -37,6 +37,7 @@ def _captured_calrissian_args(monkeypatch, env_override: dict):
 
     def fake_calrissian_main():
         import sys as _sys
+
         argv = list(_sys.argv)
         captured["argv"] = argv
         # Read pod-env-vars file immediately — tempdir will be gone after run_cwl returns
@@ -54,13 +55,15 @@ def _captured_calrissian_args(monkeypatch, env_override: dict):
     monkeypatch.setitem(sys.modules, "calrissian.main", fake_calrissian_main_module)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        cwl_content = json.dumps({
-            "class": "CommandLineTool",
-            "cwlVersion": "v1.0",
-            "baseCommand": "echo",
-            "inputs": {},
-            "outputs": {},
-        })
+        cwl_content = json.dumps(
+            {
+                "class": "CommandLineTool",
+                "cwlVersion": "v1.0",
+                "baseCommand": "echo",
+                "inputs": {},
+                "outputs": {},
+            }
+        )
 
         monkeypatch.setenv("OPENEO_RESULTS_PATH", tmpdir)
         monkeypatch.setenv("OPENEO_USER_WORKSPACE", tmpdir)
@@ -70,9 +73,11 @@ def _captured_calrissian_args(monkeypatch, env_override: dict):
             if k not in env_override:
                 monkeypatch.delenv(k, raising=False)
 
-        with patch.object(_cwl, "_validate_cwl", return_value={"valid": True, "errors": []}), \
-             patch.object(_cwl, "_patch_calrissian_container_lookup"), \
-             patch("calrissian.main.main", fake_calrissian_main):
+        with patch.object(
+            _cwl, "_validate_cwl", return_value={"valid": True, "errors": []}
+        ), patch.object(_cwl, "_patch_calrissian_container_lookup"), patch(
+            "calrissian.main.main", fake_calrissian_main
+        ):
             try:
                 _cwl.run_cwl(cwl=cwl_content, inputs={})
             except Exception:
@@ -82,7 +87,6 @@ def _captured_calrissian_args(monkeypatch, env_override: dict):
 
 
 class TestCdseCredentialInjection:
-
     def test_pod_env_vars_arg_present_when_credentials_set(self, monkeypatch):
         result = _captured_calrissian_args(monkeypatch, _CDSE_VARS)
         assert "--pod-env-vars" in result["argv"]

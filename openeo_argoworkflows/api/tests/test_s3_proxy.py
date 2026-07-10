@@ -8,18 +8,18 @@ Then: file is streamed back to client with correct headers
 This endpoint solves the CORS problem — browser talks to openeo.eurac.edu
 (same origin as the web editor) and the API fetches from S3 internally.
 """
-import uuid
 import datetime
-import pytest
+import uuid
 from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
-from openeo_fastapi.client.psql.engine import create
 
+import pytest
+from fastapi.testclient import TestClient
 from openeo_argoworkflows_api.jobs import ArgoJob
 from openeo_argoworkflows_api.s3 import s3_download_stream
-
+from openeo_fastapi.client.psql.engine import create
 
 # --- unit test for s3_download_stream helper ---
+
 
 # Given: a valid s3:// URI and configured credentials
 # When: s3_download_stream is called
@@ -60,5 +60,6 @@ def test_s3_download_stream_calls_get_object(monkeypatch):
 # Then: raises ValueError
 def test_s3_download_stream_rejects_non_s3_uri():
     from openeo_argoworkflows_api.s3 import s3_download_stream
+
     with pytest.raises(ValueError, match="s3://"):
         s3_download_stream("/local/path/result.nc")

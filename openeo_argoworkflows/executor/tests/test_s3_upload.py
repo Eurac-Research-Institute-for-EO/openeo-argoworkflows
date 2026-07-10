@@ -13,8 +13,9 @@ import importlib.util
 import json
 import os
 import pathlib
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 # Load s3.py directly — avoids the package __init__.py which eagerly
@@ -22,8 +23,8 @@ from unittest.mock import MagicMock, patch
 def _load_s3_module():
     spec = importlib.util.spec_from_file_location(
         "s3",
-        pathlib.Path(__file__).parent.parent /
-        "openeo_argoworkflows_executor/extra_processes/process_implementations/s3.py"
+        pathlib.Path(__file__).parent.parent
+        / "openeo_argoworkflows_executor/extra_processes/process_implementations/s3.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -31,8 +32,8 @@ def _load_s3_module():
 
 
 _S3_MODULE_PATH = str(
-    pathlib.Path(__file__).parent.parent /
-    "openeo_argoworkflows_executor/extra_processes/process_implementations/s3.py"
+    pathlib.Path(__file__).parent.parent
+    / "openeo_argoworkflows_executor/extra_processes/process_implementations/s3.py"
 )
 
 
@@ -145,6 +146,7 @@ def test_upload_to_s3_key_structure(tmp_path, monkeypatch):
 
 # --- upload_stac_item_assets: rewrite local STAC item hrefs to S3 (CWL path) ---
 
+
 def _make_item(tmp_path, href, name="item1.json"):
     items = tmp_path / "items"
     items.mkdir(exist_ok=True)
@@ -160,7 +162,9 @@ def test_upload_stac_item_assets_rewrites_local_href_to_s3(tmp_path, monkeypatch
     items, item_json = _make_item(tmp_path, str(tif))
 
     mod = _load_s3_module()
-    with patch.object(mod, "upload_to_s3", return_value="s3://eo-public/u/j/coh.tif") as up:
+    with patch.object(
+        mod, "upload_to_s3", return_value="s3://eo-public/u/j/coh.tif"
+    ) as up:
         n = mod.upload_stac_item_assets(str(items))
 
     assert n == 1

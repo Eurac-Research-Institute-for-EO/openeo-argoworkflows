@@ -1,10 +1,9 @@
 import datetime
+import uuid
+from unittest.mock import MagicMock, patch
+
 import fakeredis
 import pytest
-import uuid
-
-from unittest.mock import patch, MagicMock
-
 from openeo_argoworkflows_api.tasks import _resolve_udps
 
 
@@ -126,6 +125,28 @@ def test_resolve_udps_knows_run_cwl():
     mock_get.assert_not_called()
 
 
+def test_queue_to_submit_skips_argo_when_server_not_set():
+    """When ARGO_WORKFLOWS_SERVER is None, queue_to_submit must skip the
+    WorkflowsService call and enqueue directly — not crash with 500."""
+    import uuid
+    from unittest.mock import PropertyMock
+
+    from openeo_argoworkflows_api import tasks
+    from openeo_argoworkflows_api.tasks import queue_to_submit
+
+    job = MagicMock()
+    job.job_id = uuid.uuid4()
+    job.user_id = uuid.uuid4()
+
+    with patch.object(tasks.settings, "ARGO_WORKFLOWS_SERVER", None), patch.object(
+        tasks, "q"
+    ) as mock_q, patch("openeo_argoworkflows_api.tasks.WorkflowsService") as mock_ws:
+        queue_to_submit(job)
+
+    mock_ws.assert_not_called()
+    mock_q.enqueue.assert_called_once()
+
+
 def test_submit_job_failure_marks_job_error():
     """If pre-submission work raises (e.g. UDP resolution), the job must be
     flipped to error — not left in 'queued' forever (#153)."""
@@ -136,9 +157,9 @@ def test_submit_job_failure_marks_job_error():
     job.job_id = uuid.uuid4()
     job.user_id = uuid.uuid4()
 
-    with patch("openeo_argoworkflows_api.tasks.WorkflowsService"), \
-         patch("openeo_argoworkflows_api.tasks._resolve_udps", side_effect=ValueError("boom")), \
-         patch("openeo_argoworkflows_api.tasks.modify") as mock_modify:
+    with patch("openeo_argoworkflows_api.tasks.WorkflowsService"), patch(
+        "openeo_argoworkflows_api.tasks._resolve_udps", side_effect=ValueError("boom")
+    ), patch("openeo_argoworkflows_api.tasks.modify") as mock_modify:
         submit_job(job)
 
     assert job.status == Status.error

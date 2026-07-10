@@ -9,13 +9,12 @@ import pyproj
 import pystac_client
 import xarray as xr
 from odc.stac import stac_load
+from openeo_argoworkflows_executor.crs import _extract_crs
+from openeo_argoworkflows_executor.timeout import compute_with_timeout
 from openeo_pg_parser_networkx.pg_schema import BoundingBox, GeoJson, TemporalInterval
 from openeo_processes_dask.process_implementations.cubes._filter import filter_bbox
 from openeo_processes_dask.process_implementations.data_model import RasterCube
 from pystac.extensions import raster
-
-from openeo_argoworkflows_executor.crs import _extract_crs
-from openeo_argoworkflows_executor.timeout import compute_with_timeout
 
 __all__ = ["load_collection", "save_result"]
 
@@ -198,16 +197,10 @@ def load_collection(
                 "B11",
                 "B12",
             }
-            data_assets = [
-                a for a in available_assets if a in known_data_assets
-            ]
+            data_assets = [a for a in available_assets if a in known_data_assets]
             if not data_assets:
                 # Fallback: exclude known non-data assets, keep everything else
-                data_assets = [
-                    a
-                    for a in available_assets
-                    if a not in non_data_assets
-                ]
+                data_assets = [a for a in available_assets if a not in non_data_assets]
             if data_assets:
                 load_kwargs["bands"] = data_assets
                 logger.info(f"Loading auto-detected bands/assets: {data_assets}")
