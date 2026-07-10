@@ -62,7 +62,7 @@ def test_resolve_udps_inlines_udp():
     }
 
     mock_udp = MagicMock()
-    mock_udp.dict.return_value = _make_udp_spec(
+    mock_udp.model_dump.return_value = _make_udp_spec(
         udp_pg,
         params=[{"name": "x", "schema": {"type": "number"}}],
     )

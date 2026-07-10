@@ -86,7 +86,6 @@ def test_cancel_queued_job_via_http(mock_engine, a_mock_user, mock_settings):
     """DELETE /jobs/{id}/results on a queued job must return 204 without calling Argo."""
     import uuid, datetime
     from openeo_fastapi.client.psql.engine import create, get
-    from openeo_fastapi.client.auth import Authenticator
     from openeo_argoworkflows_api.jobs import ArgoJob
 
     job = ArgoJob(
@@ -104,7 +103,7 @@ def test_cancel_queued_job_via_http(mock_engine, a_mock_user, mock_settings):
     async def mock_validate():
         return a_mock_user
 
-    app_api.dependency_overrides[Authenticator.validate] = mock_validate
+    app_api.dependency_overrides[ExtendedAuthenticator.validate] = mock_validate
 
     url = f"{mock_settings.OPENEO_PREFIX}/jobs/{job.job_id}/results"
 

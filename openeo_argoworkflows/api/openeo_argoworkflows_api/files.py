@@ -3,10 +3,10 @@ import fsspec
 import json
 import re
 
-from fastapi import Depends, HTTPException, Request, UploadFile, File as apiFile
+from fastapi import Depends, Header, HTTPException, Request, UploadFile, File as apiFile
 from fastapi.responses import StreamingResponse, Response
 from pathlib import Path
-from pydantic import validator
+from pydantic import field_validator, model_validator
 from pydantic.dataclasses import dataclass
 from os.path import splitext
 
@@ -18,6 +18,11 @@ from openeo_fastapi.client.auth import User
 from openeo_argoworkflows_api.auth import ExtendedAuthenticator
 from openeo_argoworkflows_api.jobs import UserWorkspace
 
+
+# Resolve at call time so tests can patch ExtendedAuthenticator.validate.
+def _validate_auth(authorization: str = Header()):
+    return ExtendedAuthenticator.validate(authorization)
+
 fs = fsspec.filesystem(protocol="file")
 
 
@@ -27,20 +32,22 @@ class ByteRange:
     end: Optional[int]
     range: int = None
 
-    @validator("start", pre=True, always=True)
-    def set_start(v):
+    @field_validator("start", mode="before")
+    @classmethod
+    def set_start(cls, v):
         if v is None:
             return 0
         return v
 
-    @validator("range", pre=False, always=True)
-    def set_range(v, values):
-        if values["end"] is not None:
-            if not values["start"] < values["end"]:
+    @model_validator(mode="after")
+    def set_range(self):
+        if self.end is not None:
+            if not self.start < self.end:
                 raise ValueError(
-                    f"{values['end']} must be greater than {values['start']}"
+                    f"{self.end} must be greater than {self.start}"
                 )
-            return values["end"] - values["start"] + 1
+            self.range = self.end - self.start + 1
+        return self
 
 
 
@@ -189,7 +196,7 @@ class ArgoFileRegister(FilesRegister):
     def list_files(
             self,
             limit: int = None,
-            user: User = Depends(ExtendedAuthenticator.validate)
+            user: User = Depends(_validate_auth)
     ):
         """
         List all files in the workspace
@@ -228,7 +235,7 @@ class ArgoFileRegister(FilesRegister):
         self,
         path: str,
         request: Request,
-        user: User = Depends(ExtendedAuthenticator.validate)
+        user: User = Depends(_validate_auth)
     ):
         
         space = UserWorkspace(
@@ -286,7 +293,7 @@ class ArgoFileRegister(FilesRegister):
     async def delete_file(
         self,
         path: str,
-        user: User = Depends(ExtendedAuthenticator.validate)
+        user: User = Depends(_validate_auth)
     ):
         
         space = UserWorkspace(

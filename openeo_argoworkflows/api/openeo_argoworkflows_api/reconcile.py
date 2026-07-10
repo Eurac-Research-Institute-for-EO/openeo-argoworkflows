@@ -46,7 +46,7 @@ def reconcile():
         rows = session.query(ArgoJobORM).filter(
             ArgoJobORM.status == Status.running.value
         ).all()
-        running_jobs = [ArgoJob.from_orm(r) for r in rows]
+        running_jobs = [ArgoJob.model_validate(r) for r in rows]
 
     if not running_jobs:
         logger.info("No running jobs found — nothing to reconcile.")
