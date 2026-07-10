@@ -3,11 +3,12 @@ import datetime
 import hashlib
 import hmac
 import logging
+import uuid
 
-from fastapi import HTTPException, Request
-from openeo_fastapi.client.auth import Authenticator, User
+from fastapi import Header, HTTPException, Request
+from openeo_fastapi.client.auth import Authenticator, IssuerHandler, User
 from openeo_fastapi.client.psql import engine
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, field_validator
 from urllib import parse
 from uuid import UUID
 
@@ -22,7 +23,8 @@ class SignedQuery(BaseModel):
     UserId: UUID
     Signature: str
 
-    @validator("Expires", pre=True)
+    @field_validator("Expires", mode="before")
+    @classmethod
     def expires_as_datetime(cls, v):
         return datetime.datetime.fromtimestamp(int(v))
 
@@ -31,7 +33,8 @@ class SignedUrl(BaseModel):
     path: str
     query: SignedQuery
 
-    @validator("query", pre=True)
+    @field_validator("query", mode="before")
+    @classmethod
     def query_to_dict(cls, v):
         params = v.split("&")
         query_dict = {}
@@ -41,13 +44,30 @@ class SignedUrl(BaseModel):
         return query_dict
 
 
+def validate_authorization(authorization: str = Header()):
+    settings = ExtendedAppSettings()
+    issuer = IssuerHandler(
+        issuer_uri=settings.OIDC_URL,
+        policies=list(settings.OIDC_POLICIES or []),
+    )
+
+    user_info = issuer.validate_token(authorization)
+    found_user = engine.get_first_or_default(
+        User, engine.Filter(column_name="oidc_sub", value=user_info["sub"])
+    )
+    if found_user:
+        return found_user
+
+    user = User(user_id=uuid.uuid4(), oidc_sub=user_info["sub"])
+    engine.create(create_object=user)
+    return user
+
 
 class ExtendedAuthenticator(Authenticator):
 
     @classmethod
-    async def validate(cls, request: Request):
-        user = super().validate(request.headers.get("Authorization"))
-        return user
+    def validate(cls, authorization: str = Header()):
+        return validate_authorization(authorization)
 
     @classmethod
     async def signed_url_or_validate(cls, request: Request):
@@ -61,9 +81,8 @@ class ExtendedAuthenticator(Authenticator):
                     status_code=401,
                     detail="Can't authorize. Neither Authorization header, or signed url have been provided.",
                 )
-        else:
-           user = super().validate(request.headers.get("Authorization"))
-           return user
+        user = cls.validate(request.headers.get("Authorization"))
+        return user
         
     
     @classmethod

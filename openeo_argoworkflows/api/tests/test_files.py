@@ -9,7 +9,7 @@ from uuid import uuid4
 from openeo_argoworkflows_api.app import app as app_api
 from openeo_argoworkflows_api.jobs import UserWorkspace
 
-@patch("openeo_fastapi.client.auth.Authenticator.validate")
+@patch("openeo_argoworkflows_api.auth.ExtendedAuthenticator.validate")
 def test_file_download(user_validate, a_mock_user, mock_settings):
     
     user_validate.return_value = a_mock_user
@@ -55,7 +55,7 @@ def test_file_formats(mock_settings):
     assert len(json_out["output"]) == 4
 
 
-@patch("openeo_fastapi.client.auth.Authenticator.validate")
+@patch("openeo_argoworkflows_api.auth.ExtendedAuthenticator.validate")
 def test_file_list(user_validate, a_mock_user, mock_settings):
     
     user_validate.return_value = a_mock_user
@@ -92,7 +92,7 @@ def test_file_list(user_validate, a_mock_user, mock_settings):
     assert str(user_workspace.files_directory) not in resp.json()["files"][0]["path"]
 
 
-@patch("openeo_fastapi.client.auth.Authenticator.validate")
+@patch("openeo_argoworkflows_api.auth.ExtendedAuthenticator.validate")
 def test_file_upload(user_validate, a_mock_user, mock_settings):
     
     fs = fsspec.filesystem(protocol="file")
@@ -131,7 +131,7 @@ def test_file_upload(user_validate, a_mock_user, mock_settings):
 
 
 
-@patch("openeo_fastapi.client.auth.Authenticator.validate")
+@patch("openeo_argoworkflows_api.auth.ExtendedAuthenticator.validate")
 def test_file_delete(user_validate, a_mock_user, mock_settings):
     
     user_validate.return_value = a_mock_user

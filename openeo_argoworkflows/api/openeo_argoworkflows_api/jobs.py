@@ -32,7 +32,7 @@ from openeo_fastapi.api.types import Status, Error
 from openeo_fastapi.api.models import JobsGetLogsResponse, JobsRequest
 from openeo_fastapi.client.psql import engine
 from openeo_fastapi.client.jobs import JobsRegister
-from openeo_fastapi.client.auth import Authenticator, User
+from openeo_fastapi.client.auth import User
 
 from openeo_argoworkflows_api.auth import ExtendedAuthenticator
 from openeo_argoworkflows_api.psql.models import ArgoJob
@@ -100,7 +100,7 @@ class ArgoJobsRegister(JobsRegister):
         ))
 
     def create_job(
-        self, body: JobsRequest, user: User = Depends(Authenticator.validate)
+        self, body: JobsRequest, user: User = Depends(ExtendedAuthenticator.validate)
     ):
         """Create a new BatchJob.
 
@@ -113,6 +113,15 @@ class ArgoJobsRegister(JobsRegister):
             headers need to be set in this response to ensure certain behaviours when being used by OpenEO client modules.
         """
         job_id = uuid.uuid4()
+
+        if not body.process or not body.process.process_graph:
+            raise HTTPException(
+                status_code=400,
+                detail=Error(
+                    code="ProcessGraphMissing",
+                    message="A batch job requires a process graph in the 'process' field.",
+                ),
+            )
 
         if not body.process.id:
             auto_name_size = 16
@@ -148,7 +157,7 @@ class ArgoJobsRegister(JobsRegister):
         )
     
     def start_job(
-        self, job_id: uuid.UUID, user: User = Depends(Authenticator.validate)
+        self, job_id: uuid.UUID, user: User = Depends(ExtendedAuthenticator.validate)
     ):
         
         job = engine.get(get_model=ArgoJob, primary_key=job_id)
@@ -194,7 +203,7 @@ class ArgoJobsRegister(JobsRegister):
         )
         
     def delete_job(
-        self, job_id: uuid.UUID, user: User = Depends(Authenticator.validate)
+        self, job_id: uuid.UUID, user: User = Depends(ExtendedAuthenticator.validate)
     ):
         job = engine.get(get_model=ArgoJob, primary_key = job_id)
         if job.status in (Status.queued, Status.running):
@@ -228,7 +237,7 @@ class ArgoJobsRegister(JobsRegister):
         )
     
     def cancel_job(
-        self, job_id: uuid.UUID, user: User = Depends(Authenticator.validate)
+        self, job_id: uuid.UUID, user: User = Depends(ExtendedAuthenticator.validate)
     ):
         job = engine.get(get_model=ArgoJob, primary_key=job_id)
 
@@ -452,7 +461,7 @@ class ArgoJobsRegister(JobsRegister):
         return stac_collection.to_dict(transform_hrefs=False)
     
 
-    def process_sync_job(self, body: JobsRequest = JobsRequest(), user: User = Depends(Authenticator.validate)):
+    def process_sync_job(self, body: JobsRequest = JobsRequest(), user: User = Depends(ExtendedAuthenticator.validate)):
         """Start the processing of a synchronous Job.
 
         Args:

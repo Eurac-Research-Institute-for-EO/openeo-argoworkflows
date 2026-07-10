@@ -43,7 +43,7 @@ def _resolve_udps(process_graph: dict, user_id) -> dict:
 
     def get_udp_spec(process_id: str, namespace: str) -> dict:
         udp = get(get_model=UserDefinedProcessGraph, primary_key=[process_id, namespace])
-        return udp.dict()
+        return udp.model_dump()
 
     return resolve_process_graph(
         process_graph=process_graph,
