@@ -142,15 +142,16 @@ class ArgoFileRegister(FilesRegister):
 
         def tar_stream(path: Path):
             import tarfile
-            chunk_size = (1024 * 1024) * 4  # 4MB chunks for tar
+            chunk_size = (1024 * 1024) * 4
             buffer = io.BytesIO()
-            with tarfile.open(mode="w|", fileobj=buffer) as tar:
+            tar = tarfile.open(mode="w", fileobj=buffer)
+            try:
                 tar.add(path, arcname=path.name)
-                buffer.seek(0)
-                while chunk := buffer.read(chunk_size):
-                    yield chunk
-                buffer.seek(0)
-                buffer.truncate()
+            finally:
+                tar.close()
+            buffer.seek(0)
+            while chunk := buffer.read(chunk_size):
+                yield chunk
 
         absolute_path = self.validate_path(path, user)
 
