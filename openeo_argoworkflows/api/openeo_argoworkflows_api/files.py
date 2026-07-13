@@ -142,6 +142,7 @@ class ArgoFileRegister(FilesRegister):
 
         def tar_stream(path: Path):
             import tarfile
+
             chunk_size = (1024 * 1024) * 4
             buffer = io.BytesIO()
             tar = tarfile.open(mode="w", fileobj=buffer)
