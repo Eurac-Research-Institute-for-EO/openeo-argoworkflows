@@ -7,6 +7,9 @@ The two components here, are integrated, and expected to be installed via the [O
 
 ## Development
 
+Integration test notebooks are available in the [`notebooks/`](notebooks/) directory.
+These demonstrate end-to-end workflows against the dev backend (e.g. NDVI → `save_result` to Zarr).
+
 In the respective documentary for the api and executor there is a dockerfile defined that can be used as a development environment for each component.
 
 To work on the Api
