@@ -140,6 +140,10 @@ def test_real_package_bridge_zarr_stages_directory_for_cwl(monkeypatch, tmp_path
     )
 
     assert Path(result).is_dir()
+    reopened = xr.open_zarr(result)
+    assert reopened.sizes == {"y": 3, "x": 4, "t": 2}
+    assert set(reopened.data_vars) == {"B01", "B02"}
+
     with patch.object(_cwl, "run_cwl", return_value={"status": "completed"}) as run_cwl:
         _cwl.run_udf(data=result, udf="workflow.cwl", runtime="eoap-cwl", context={})
 
