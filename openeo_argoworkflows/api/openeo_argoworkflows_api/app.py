@@ -47,7 +47,10 @@ app = FastAPI()
 
 app.router.add_api_route(
     name="file_headers",
-    path=f"/{client.settings.OPENEO_VERSION}/files" + "/{path:path}",
+    # Must match the download route's prefix (OPENEO_PREFIX = /openeo/<version>),
+    # not just the bare version. Otherwise HEAD requests hit the GET download
+    # route's path with the wrong method and get 405 Method Not Allowed.
+    path=f"{client.settings.OPENEO_PREFIX}/files" + "/{path:path}",
     response_model=None,
     response_model_exclude_unset=False,
     response_model_exclude_none=True,
