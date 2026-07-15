@@ -3,7 +3,6 @@ import inspect
 import logging
 from typing import Optional
 import sys
-import importlib
 
 from openeo_pg_parser_networkx import Process, ProcessRegistry, OpenEOProcessGraph
 from openeo_processes_dask_slim.process_implementations.core import process
@@ -13,6 +12,13 @@ from openeo_argoworkflows_executor.utils import derive_sub_graph, get_pg_boundin
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
+
+_DEDL_CUBE_LOAD_PROCESSES = (
+    "load_stac",
+    "filter_dggs",
+    "raster_to_dggs",
+    "dggs_to_raster",
+)
 
 
 def _register_processes_from_module(
@@ -41,6 +47,30 @@ def _register_processes_from_module(
     for func in processes_from_module:
         process_registry[func.__name__] = Process(
             spec=specs[func.__name__], implementation=func
+        )
+
+    return process_registry
+
+
+def _register_dedl_cube_load_processes(process_registry):
+    try:
+        import openeo_processes_dedl_cube_load as dedl_cube_load
+        from openeo_processes_dedl_cube_load import specs as dedl_specs
+    except ImportError:
+        return process_registry
+
+    for process_name in _DEDL_CUBE_LOAD_PROCESSES:
+        implementation = getattr(dedl_cube_load, process_name, None)
+        spec = getattr(dedl_specs, process_name, None)
+        if implementation is None or spec is None:
+            logger.warning(
+                "Skipping DEDL process %s because implementation or spec is missing",
+                process_name,
+            )
+            continue
+        process_registry[process_name] = Process(
+            spec=spec,
+            implementation=implementation,
         )
 
     return process_registry
@@ -75,20 +105,7 @@ def execute(parsed_graph: OpenEOProcessGraph):
 
     _register_processes_from_module(process_registry, "openeo_processes_dask_slim")
 
-    try:
-        import openeo_processes_dedl_cube_load as dedl_cube_load
-        from openeo_processes_dedl_cube_load import specs as dedl_specs
-
-        # The dedl package doesn't follow the
-        # `<pkg>.process_implementations` + `<pkg>.specs` layout that
-        # _register_processes_from_module expects: load_stac lives at the
-        # package top level with its spec in `<pkg>.specs`. Bind it directly.
-        process_registry["load_stac"] = Process(
-            spec=dedl_specs.load_stac,
-            implementation=dedl_cube_load.load_stac,
-        )
-    except ImportError:
-        pass
+    _register_dedl_cube_load_processes(process_registry)
     
     _register_processes_from_module(
         process_registry, "openeo_argoworkflows_executor.extra_processes"
