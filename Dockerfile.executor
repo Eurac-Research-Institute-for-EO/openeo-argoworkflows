@@ -50,7 +50,7 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
         "openeo-processes-dask @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git@v2026.7.1-eurac-dev.1" \
-        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.1-eurac-dev.1" && \
+        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.1-eurac-dev.3" && \
     rm /tmp/requirements.txt /tmp/requirements-core.txt
 
 # Create the openeo_executor CLI entry point script directly.

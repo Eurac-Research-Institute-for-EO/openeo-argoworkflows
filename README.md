@@ -41,16 +41,17 @@ Below is a summary of which tags/revisions are currently referenced, where they 
 | Package | Reference | Defined in |
 |---|---|---|
 | `openeo-processes-dask` | `tag = "v2026.7.1-eurac-dev.1"` | `openeo_argoworkflows/executor/pyproject.toml` |
-| `openeo-processes-save-result` | `tag = "v2026.7.1-eurac-dev.2"` | `openeo_argoworkflows/executor/pyproject.toml` |
+| `openeo-processes-save-result` | `tag = "v2026.7.1-eurac-dev.3"` | `openeo_argoworkflows/executor/pyproject.toml` |
 | `openeo-pg-parser-networkx` | `tag = "v2026.7.1-eurac-dev.1"` | `openeo_argoworkflows/executor/pyproject.toml` |
 
-### Transitive Dependency: `openeo-python-client`
+### Transitive Dependencies from `openeo-processes-save-result`
 
-`openeo-processes-save-result` declares `openeo-python-client` as a dependency in its own `pyproject.toml`. The version is resolved transitively through `poetry.lock`.
+`openeo-processes-save-result` declares these dependencies in its own `pyproject.toml`. The versions are resolved transitively through `poetry.lock`.
 
 | Package | Tag | Defined in |
 |---|---|---|
 | `openeo-python-client` | `v2026.7.1-eurac-dev.2` | `openeo-processes-save-result/pyproject.toml` (resolved in `poetry.lock`) |
+| `raster2stac` / `raster-to-stac` | `v2026.7.1-eurac-dev.1` (package version `2026.7.2`) | `openeo-processes-save-result/pyproject.toml` (resolved in `poetry.lock`) |
 
 ### Docker Image Tags
 
@@ -86,7 +87,7 @@ The executor Dockerfile (`Dockerfile.executor` at repo root) has two hardcoded g
 
 ```dockerfile
 "openeo-processes-dask @ git+https://github.com/...@v2026.7.1-eurac-dev.1"
-"openeo-processes-save-result @ git+https://github.com/...@v2026.7.1-eurac-dev.1"
+"openeo-processes-save-result @ git+https://github.com/...@v2026.7.1-eurac-dev.3"
 ```
 
 These are listed in the `pyproject.toml` as regular poetry dependencies. However, the Dockerfile adds them as `--no-deps` pip installs because their transitive dependencies (except `gdal`) are already included in the poetry export. **When updating these versions, make sure both `pyproject.toml` and `Dockerfile.executor` are updated consistently.**
