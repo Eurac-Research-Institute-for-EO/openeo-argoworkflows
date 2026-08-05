@@ -31,9 +31,28 @@ class TestRunUdf:
         """Patch run_cwl on the cwl module and return the mock."""
         return patch.object(_cwl, "run_cwl", return_value={"status": "completed"})
 
-    def test_rejects_unsupported_runtime(self):
-        with pytest.raises(RuntimeError, match="Unsupported runtime"):
-            run_udf(data=None, udf="workflow.cwl", runtime="python")
+    def test_python_runtime_delegates_upstream(self):
+        """Python UDFs must reach the upstream openeo_processes_dask
+        implementation — our registration shadows it, it must not be
+        rejected (#173)."""
+        upstream = MagicMock(return_value="cube")
+        with patch.object(_cwl, "_upstream_run_udf", upstream, create=True), \
+             patch.object(_cwl, "run_cwl") as mock_cwl:
+            out = run_udf(data="cube-in", udf="code", runtime="Python", context={"a": 1})
+
+        assert out == "cube"
+        mock_cwl.assert_not_called()
+        kwargs = upstream.call_args.kwargs
+        assert kwargs["udf"] == "code"
+        assert kwargs["runtime"] == "Python"
+        assert kwargs["context"] == {"a": 1}
+
+    def test_unknown_runtime_also_delegates(self):
+        """Anything non-CWL goes upstream; upstream owns runtime validation."""
+        upstream = MagicMock(return_value="x")
+        with patch.object(_cwl, "_upstream_run_udf", upstream, create=True):
+            run_udf(data=None, udf="code", runtime="R")
+        upstream.assert_called_once()
 
     def _get_inputs(self, mock_cwl) -> dict:
         """Extract the 'inputs' kwarg from a patched run_cwl call."""

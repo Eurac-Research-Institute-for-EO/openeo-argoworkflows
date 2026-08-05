@@ -3251,8 +3251,8 @@ ml = ["xgboost[dask] (>=1.5.1)"]
 [package.source]
 type = "git"
 url = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git"
-reference = "v2026.7.1-eurac-dev.1"
-resolved_reference = "eeb5ffbeaf107c122ae3206d4320885408d10874"
+reference = "v2026.7.1-eurac-dev.2"
+resolved_reference = "c5a1dd7b56f74a114e91d7ec659767edcb57c897"
 
 [[package]]
 name = "openeo-processes-save-result"
@@ -6437,4 +6437,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "d69194102b74b749cc58d87fd85359563f24b3598585b6b9e25806f64f9b5384"
+content-hash = "ad3c58edf2dfd755ce264f8f4fa5bc3deb926fdfe406a9f002f189e6c4a1e255"
