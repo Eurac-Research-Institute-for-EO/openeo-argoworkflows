@@ -543,6 +543,24 @@ def run_cwl(
             "status": "completed",
         }
 
+def _upstream_run_udf(data=None, udf: str = "", runtime: str = "", context=None):
+    """Call openeo_processes_dask's run_udf (Python UDFs etc.).
+
+    Imported lazily: this module is also loaded standalone (tests, CWL-only
+    contexts) where the heavy openeo_processes_dask import isn't wanted.
+    """
+    try:
+        from openeo_processes_dask.process_implementations.udf import (
+            run_udf as upstream,
+        )
+    except ImportError as e:  # pragma: no cover - depends on image contents
+        raise RuntimeError(
+            f"Runtime '{runtime}' needs openeo_processes_dask, which is not "
+            f"available in this executor image: {e}"
+        ) from e
+    return upstream(data=data, udf=udf, runtime=runtime, context=context)
+
+
 def run_udf(
     data=None,
     udf: str = "",
@@ -551,7 +569,7 @@ def run_udf(
     context: Optional[dict] = None,
     **kwargs,
 ):
-    """run_udf handler for EOAP-CWL runtime.
+    """run_udf handler for the EOAP-CWL runtime, delegating everything else.
 
     Maps run_udf parameters to run_cwl:
       udf     -> cwl  (the CWL document or URL)
@@ -560,11 +578,13 @@ def run_udf(
     If `data` is a file path string (returned by save_result), it is
     injected into CWL inputs as `openeo_data` so CWL tools can reference
     the staged file without needing an unresolvable from_node in context.
+
+    Non-CWL runtimes (e.g. Python UDFs) are handed to the upstream
+    openeo_processes_dask implementation. This registration shadows it, so
+    without the delegation Python UDFs are unreachable (#159).
     """
     if runtime.lower() != "eoap-cwl":
-        raise RuntimeError(
-            f"Unsupported runtime '{runtime}'. This backend only supports 'EOAP-CWL'."
-        )
+        return _upstream_run_udf(data=data, udf=udf, runtime=runtime, context=context)
 
     inputs = dict(context or {})
     if isinstance(data, str) and data.startswith("/"):
