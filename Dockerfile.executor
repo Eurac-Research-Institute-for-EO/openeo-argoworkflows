@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends g++ git && rm -
 # and packages that declare the gdal extra, then install via pip. This avoids
 # poetry/pip trying to replace the conda-forge GDAL library and Python bindings.
 #
-# openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac-dev.1
+# openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac-dev.2
 # (tag), but poetry export resolves our own openeo-processes-dask dep to the commit
 # hash. Pip sees two different Git references for the same package and refuses.
 # Workaround: install both direct Git packages with --no-deps after the main install;
@@ -49,7 +49,7 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
     grep -Ev "^(gdal|openeo-processes-dask|openeo-processes-save-result)" /tmp/requirements.txt > /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
-        "openeo-processes-dask @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git@v2026.7.1-eurac-dev.1" \
+        "openeo-processes-dask @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git@v2026.7.1-eurac-dev.2" \
         "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.1-eurac-dev.3" && \
     rm /tmp/requirements.txt /tmp/requirements-core.txt
 
