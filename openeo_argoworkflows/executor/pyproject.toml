@@ -9,7 +9,7 @@ packages = [{include = "openeo_argoworkflows_executor"}]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
 dask-gateway = "^2024.1.0"
-openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.1", extras = ["implementations", "ml"]}
+openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.2", extras = ["implementations", "ml"]}
 openeo-processes-save-result = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git", tag = "v2026.7.1-eurac-dev.3"}
 openeo-pg-parser-networkx = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-pg-parser-networkx.git", tag = "v2026.7.1-eurac-dev.1"}
 pystac-client = ">=0.8.2,<1"
