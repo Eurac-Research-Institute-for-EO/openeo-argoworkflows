@@ -31,7 +31,9 @@ def fetch_cwl_text(url: str, timeout: int = 15) -> str:
     scheme = url.split("://", 1)[0].lower() if "://" in url else ""
     if scheme not in ("http", "https"):
         raise ValueError(f"Unsupported URL scheme '{scheme}': only http/https allowed")
-    with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (scheme checked)
+    with urllib.request.urlopen(
+        url, timeout=timeout
+    ) as resp:  # noqa: S310 (scheme checked)
         return resp.read(_MAX_CWL_BYTES + 1).decode("utf-8")
 
 

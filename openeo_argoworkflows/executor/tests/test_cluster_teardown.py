@@ -14,7 +14,6 @@ from openeo_argoworkflows_executor.cli import _teardown_cluster
 
 
 class TestTeardownCluster:
-
     def test_none_cluster_is_noop(self):
         # No gateway cluster (LOCAL or CWL job) — nothing to do, nothing raised
         _teardown_cluster(None, None)

@@ -1,0 +1,33 @@
+# Simulates the test_api CI pipeline locally.
+# Usage: docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
+version: "3.8"
+
+services:
+  test-api:
+    container_name: openeo-argoworkflows-api-test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - POSTGRES_USER=tester
+      - POSTGRES_PASSWORD=easy_access
+      - POSTGRES_DB=openeo
+      - POSTGRESQL_HOST=localhost
+      - POSTGRESQL_PORT=5432
+      - API_DNS=test.api.org
+      - API_TLS=False
+      - API_TITLE=OpenEO Argo Api
+      - API_DESCRIPTION=Testing the OpenEO Argo Api
+      - STAC_API_URL=http://test-stac-api.mock.com/api/
+      - OIDC_URL=http://test-oidc-api.mock.com/api/
+      - OIDC_ORGANISATION=issuer
+      - OPENEO_WORKSPACE_ROOT=/opt/tests/data/out
+      - ARGO_WORKFLOWS_SERVER=http://not.real.argo.com/api/
+      - ARGO_WORKFLOWS_NAMESPACE=testing
+      - ARGO_WORKFLOWS_TOKEN=atoken
+      - OPENEO_EXECUTOR_IMAGE=testimage:2024.6.1
+      - OPENEO_SIGN_KEY=xx9Yp6whivS0wrC2CmIhxlJAMbfDugZw
+      - DASK_GATEWAY_SERVER=http://not.real.dask-gateway.com/
+    command: >
+      sh -c "python -m pytest tests/ -v --no-header -x -W ignore::DeprecationWarning"

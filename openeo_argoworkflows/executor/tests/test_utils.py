@@ -1,15 +1,14 @@
 """Tests for executor utility functions — bounding box extraction and sub-graph derivation."""
 
 import pytest
-from openeo_argoworkflows_executor.utils import get_pg_bounding_box, derive_sub_graph
-
+from openeo_argoworkflows_executor.utils import derive_sub_graph, get_pg_bounding_box
 
 # ---------------------------------------------------------------------------
 # get_pg_bounding_box
 # ---------------------------------------------------------------------------
 
-class TestGetPgBoundingBox:
 
+class TestGetPgBoundingBox:
     def _make_load_pg(self, spatial_extent):
         return {
             "load1": {
@@ -113,11 +112,12 @@ class TestGetPgBoundingBox:
 # derive_sub_graph
 # ---------------------------------------------------------------------------
 
-class TestDeriveSubGraph:
 
+class TestDeriveSubGraph:
     def _make_cell(self, west, south, east, north):
         """Minimal cell mock — derive_sub_graph uses cell[2].bounds."""
         from types import SimpleNamespace
+
         bounds = SimpleNamespace(bounds=(west, south, east, north))
         return (None, None, bounds)
 
@@ -127,7 +127,12 @@ class TestDeriveSubGraph:
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S2",
-                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                    "spatial_extent": {
+                        "west": 0.0,
+                        "south": 0.0,
+                        "east": 1.0,
+                        "north": 1.0,
+                    },
                 },
             }
         }
@@ -162,7 +167,12 @@ class TestDeriveSubGraph:
             "udp1": {
                 "process_id": "MY_UDP",
                 "arguments": {
-                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                    "spatial_extent": {
+                        "west": 0.0,
+                        "south": 0.0,
+                        "east": 1.0,
+                        "north": 1.0,
+                    },
                 },
                 "result": True,
             }
