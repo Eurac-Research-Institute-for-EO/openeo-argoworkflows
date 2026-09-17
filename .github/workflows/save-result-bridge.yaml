@@ -1,0 +1,60 @@
+name: save-result bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      save_result_ref:
+        description: openeo-processes-save-result ref to test
+        required: false
+        default: v2026.7.10-eurac.1
+  schedule:
+    - cron: "17 3 * * 1"
+
+env:
+  POETRY_VERSION: 2.4.1
+
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout argoworkflows
+        uses: actions/checkout@v6
+
+      - name: Checkout openeo-processes-save-result
+        uses: actions/checkout@v6
+        with:
+          repository: Eurac-Research-Institute-for-EO/openeo-processes-save-result
+          ref: ${{ github.event.inputs.save_result_ref || 'v2026.7.10-eurac.1' }}
+          path: openeo-processes-save-result
+
+      - name: Set up Python with geospatial dependencies
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: argoworkflows-save-result-bridge
+          condarc: |
+            channels:
+              - conda-forge
+            channel_priority: strict
+          create-args: >-
+            python=3.11
+            pip
+            gdal
+            rasterio
+            poetry=${{ env.POETRY_VERSION }}
+
+      - name: Install executor and save-result
+        shell: bash -el {0}
+        working-directory: openeo_argoworkflows/executor
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          poetry config virtualenvs.create false
+          poetry install --with dev
+          pip install -e ../../openeo-processes-save-result
+
+      - name: Run focused bridge tests
+        shell: bash -el {0}
+        working-directory: openeo_argoworkflows/executor
+        env:
+          PYTHONPATH: ../../openeo-processes-save-result:.
+        run: |
+          pytest tests/test_save_result_bridge.py tests/test_run_udf.py tests/test_cli_results.py -q

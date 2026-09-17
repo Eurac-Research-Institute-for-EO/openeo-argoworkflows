@@ -9,7 +9,6 @@ TDD: written before the endpoint exists.
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-
 from openeo_argoworkflows_api import cwl_inputs
 from openeo_argoworkflows_api.app import app as app_api
 from openeo_argoworkflows_api.app import client
@@ -40,7 +39,13 @@ _GRAPH_CWL = (
 class TestParser:
     def test_required_vs_default_vs_optional(self):
         parsed = cwl_inputs.parse_cwl_inputs(
-            {"inputs": {"a": "string", "b": {"type": "int", "default": 1}, "c": "string?"}}
+            {
+                "inputs": {
+                    "a": "string",
+                    "b": {"type": "int", "default": 1},
+                    "c": "string?",
+                }
+            }
         )
         assert parsed["a"]["required"] is True
         assert parsed["b"]["required"] is False
@@ -48,13 +53,20 @@ class TestParser:
 
     def test_list_form(self):
         parsed = cwl_inputs.parse_cwl_inputs(
-            {"inputs": [{"id": "x", "type": "string"}, {"id": "y", "type": "int", "default": 2}]}
+            {
+                "inputs": [
+                    {"id": "x", "type": "string"},
+                    {"id": "y", "type": "int", "default": 2},
+                ]
+            }
         )
         assert parsed["x"]["required"] is True
         assert parsed["y"]["required"] is False
 
     def test_null_union_is_optional(self):
-        parsed = cwl_inputs.parse_cwl_inputs({"inputs": {"n": {"type": ["null", "string"]}}})
+        parsed = cwl_inputs.parse_cwl_inputs(
+            {"inputs": {"n": {"type": ["null", "string"]}}}
+        )
         assert parsed["n"]["optional"] is True
 
     def test_missing_inputs_block(self):
@@ -161,7 +173,9 @@ class TestCwlInputsEndpoint:
 
     def test_url_cwl_fetches_and_returns_schema(self):
         with patch.object(cwl_inputs, "fetch_cwl_text", return_value=_INLINE_CWL) as m:
-            resp = self.client.post(ENDPOINT, json={"url": "https://example.com/tool.cwl"})
+            resp = self.client.post(
+                ENDPOINT, json={"url": "https://example.com/tool.cwl"}
+            )
         assert resp.status_code == 200
         m.assert_called_once_with("https://example.com/tool.cwl")
         assert "aoi" in resp.json()["inputs"]
@@ -176,7 +190,9 @@ class TestCwlInputsEndpoint:
         assert resp.status_code == 400
 
     def test_both_url_and_cwl_is_400(self):
-        resp = self.client.post(ENDPOINT, json={"url": "https://x/y.cwl", "cwl": _INLINE_CWL})
+        resp = self.client.post(
+            ENDPOINT, json={"url": "https://x/y.cwl", "cwl": _INLINE_CWL}
+        )
         assert resp.status_code == 400
 
     def test_bad_scheme_url_is_400(self):

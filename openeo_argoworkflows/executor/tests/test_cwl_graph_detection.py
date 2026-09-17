@@ -9,7 +9,7 @@ import importlib.util
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,13 +35,15 @@ class TestIsGraphCwl:
         return p
 
     def test_detects_graph_cwl_with_dollar_graph_key(self):
-        cwl_content = json.dumps({
-            "$graph": [
-                {"class": "CommandLineTool", "id": "ndvi"},
-                {"class": "Workflow", "id": "main"},
-            ],
-            "cwlVersion": "v1.0",
-        })
+        cwl_content = json.dumps(
+            {
+                "$graph": [
+                    {"class": "CommandLineTool", "id": "ndvi"},
+                    {"class": "Workflow", "id": "main"},
+                ],
+                "cwlVersion": "v1.0",
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = self._write_cwl(tmpdir, cwl_content)
             assert _is_graph_cwl(p) is True
@@ -58,25 +60,29 @@ cwlVersion: v1.0
             assert _is_graph_cwl(p) is True
 
     def test_returns_false_for_single_tool(self):
-        cwl_content = json.dumps({
-            "class": "CommandLineTool",
-            "cwlVersion": "v1.0",
-            "baseCommand": "echo",
-            "inputs": {},
-            "outputs": {},
-        })
+        cwl_content = json.dumps(
+            {
+                "class": "CommandLineTool",
+                "cwlVersion": "v1.0",
+                "baseCommand": "echo",
+                "inputs": {},
+                "outputs": {},
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = self._write_cwl(tmpdir, cwl_content)
             assert _is_graph_cwl(p) is False
 
     def test_returns_false_for_single_workflow(self):
-        cwl_content = json.dumps({
-            "class": "Workflow",
-            "cwlVersion": "v1.0",
-            "inputs": {},
-            "outputs": {},
-            "steps": [],
-        })
+        cwl_content = json.dumps(
+            {
+                "class": "Workflow",
+                "cwlVersion": "v1.0",
+                "inputs": {},
+                "outputs": {},
+                "steps": [],
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = self._write_cwl(tmpdir, cwl_content)
             assert _is_graph_cwl(p) is False
@@ -99,10 +105,12 @@ class TestResolveCwlArg:
     """Tests for _resolve_cwl_arg(cwl_path) — appends #main for $graph files."""
 
     def test_appends_main_for_graph_cwl(self):
-        cwl_content = json.dumps({
-            "$graph": [{"class": "Workflow", "id": "main"}],
-            "cwlVersion": "v1.0",
-        })
+        cwl_content = json.dumps(
+            {
+                "$graph": [{"class": "Workflow", "id": "main"}],
+                "cwlVersion": "v1.0",
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "workflow.cwl"
             p.write_text(cwl_content)
@@ -110,13 +118,15 @@ class TestResolveCwlArg:
             assert result == str(p) + "#main"
 
     def test_no_suffix_for_plain_cwl(self):
-        cwl_content = json.dumps({
-            "class": "CommandLineTool",
-            "cwlVersion": "v1.0",
-            "baseCommand": "echo",
-            "inputs": {},
-            "outputs": {},
-        })
+        cwl_content = json.dumps(
+            {
+                "class": "CommandLineTool",
+                "cwlVersion": "v1.0",
+                "baseCommand": "echo",
+                "inputs": {},
+                "outputs": {},
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "workflow.cwl"
             p.write_text(cwl_content)
@@ -125,10 +135,12 @@ class TestResolveCwlArg:
 
     def test_no_double_main_if_already_present(self):
         """If somehow the file already had #main in it — should not double-append."""
-        cwl_content = json.dumps({
-            "$graph": [{"class": "Workflow", "id": "main"}],
-            "cwlVersion": "v1.0",
-        })
+        cwl_content = json.dumps(
+            {
+                "$graph": [{"class": "Workflow", "id": "main"}],
+                "cwlVersion": "v1.0",
+            }
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "workflow.cwl"
             p.write_text(cwl_content)

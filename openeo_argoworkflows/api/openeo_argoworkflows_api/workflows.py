@@ -1,12 +1,26 @@
 import json
 
-from hera.workflows import Steps, Workflow, WorkflowsService, Step, Env
-from hera.workflows.models import Template, Container, EnvVar, EnvVarSource, Metadata, PersistentVolumeClaimVolumeSource, SecretKeySelector, Volume, VolumeMount
-
+from hera.workflows import Env, Step, Steps, Workflow, WorkflowsService
+from hera.workflows.models import (
+    Container,
+    EnvVar,
+    EnvVarSource,
+    Metadata,
+    PersistentVolumeClaimVolumeSource,
+    SecretKeySelector,
+    Template,
+    Volume,
+    VolumeMount,
+)
 from openeo_argoworkflows_api.settings import ExtendedAppSettings
 
 
-def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profile: dict, user_profile: dict):
+def executor_workflow(
+    service: WorkflowsService,
+    process_graph: dict,
+    dask_profile: dict,
+    user_profile: dict,
+):
     user_profile_as_json = json.dumps(user_profile)
     dask_profile_as_json = json.dumps(dask_profile)
     process_graph_as_json = json.dumps(process_graph)
@@ -20,14 +34,14 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
         pod_metadata=Metadata(
             labels={
                 "OPENEO_JOB_ID": user_profile["OPENEO_JOB_ID"],
-                "OPENEO_USER_ID": user_profile["OPENEO_USER_ID"]
+                "OPENEO_USER_ID": user_profile["OPENEO_USER_ID"],
             }
         ),
         volumes=Volume(
             name="workspaces-volume",
             persistent_volume_claim=PersistentVolumeClaimVolumeSource(
                 claim_name="openeo-workspace"
-            )
+            ),
         ),
         deletion_grace_period_seconds=1800,
         active_deadline_seconds=settings.OPENEO_EXECUTOR_DEADLINE,
@@ -40,7 +54,10 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                     container=Container(
                         env=[
                             Env(name="STAC_API_URL", value=str(settings.STAC_API_URL)),
-                            Env(name="OPENEO_COMPUTE_TIMEOUT", value=str(settings.OPENEO_COMPUTE_TIMEOUT)),
+                            Env(
+                                name="OPENEO_COMPUTE_TIMEOUT",
+                                value=str(settings.OPENEO_COMPUTE_TIMEOUT),
+                            ),
                             # GDAL HTTP resilience (#144): abort stalled remote
                             # raster reads (30s below 1KB/s) and retry, instead
                             # of hanging until OPENEO_COMPUTE_TIMEOUT. Matches
@@ -56,19 +73,28 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                             EnvVar(
                                 name="AWS_ACCESS_KEY_ID",
                                 value_from=EnvVarSource(
-                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_ACCESS_KEY_ID")
+                                    secret_key_ref=SecretKeySelector(
+                                        name="cdse-s3-credentials",
+                                        key="AWS_ACCESS_KEY_ID",
+                                    )
                                 ),
                             ),
                             EnvVar(
                                 name="AWS_SECRET_ACCESS_KEY",
                                 value_from=EnvVarSource(
-                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_SECRET_ACCESS_KEY")
+                                    secret_key_ref=SecretKeySelector(
+                                        name="cdse-s3-credentials",
+                                        key="AWS_SECRET_ACCESS_KEY",
+                                    )
                                 ),
                             ),
                             EnvVar(
                                 name="AWS_ENDPOINT_URL_S3",
                                 value_from=EnvVarSource(
-                                    secret_key_ref=SecretKeySelector(name="cdse-s3-credentials", key="AWS_ENDPOINT_URL_S3")
+                                    secret_key_ref=SecretKeySelector(
+                                        name="cdse-s3-credentials",
+                                        key="AWS_ENDPOINT_URL_S3",
+                                    )
                                 ),
                             ),
                         ],
@@ -77,19 +103,21 @@ def executor_workflow(service: WorkflowsService, process_graph: dict, dask_profi
                         command=["openeo_executor"],
                         args=[
                             "execute",
-                            "--process_graph", process_graph_as_json,
-                            "--user_profile", user_profile_as_json,
-                            "--dask_profile", dask_profile_as_json
+                            "--process_graph",
+                            process_graph_as_json,
+                            "--user_profile",
+                            user_profile_as_json,
+                            "--dask_profile",
+                            dask_profile_as_json,
                         ],
                         volume_mounts=[
                             VolumeMount(
                                 name="workspaces-volume",
-                                mount_path=str(settings.OPENEO_WORKSPACE_ROOT)
+                                mount_path=str(settings.OPENEO_WORKSPACE_ROOT),
                             )
-                        ]
-                    )
-                )
+                        ],
+                    ),
+                ),
             )
 
     return w
-
