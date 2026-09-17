@@ -7,13 +7,14 @@ Then job statuses are synced against Argo workflow state
 """
 import datetime
 import uuid
-from unittest.mock import MagicMock, patch
-
 import pytest
-from openeo_argoworkflows_api.jobs import ArgoJob
-from openeo_argoworkflows_api.reconcile import reconcile
+
+from unittest.mock import MagicMock, patch
 from openeo_fastapi.api.types import Status
 from openeo_fastapi.client.psql.engine import create, get
+
+from openeo_argoworkflows_api.jobs import ArgoJob
+from openeo_argoworkflows_api.reconcile import reconcile
 
 
 def _make_running_job(user_id):
@@ -96,9 +97,7 @@ def test_reconcile_oom_job(mock_engine, a_mock_user):
     job = _make_running_job(a_mock_user.user_id)
 
     with patch("openeo_argoworkflows_api.reconcile.WorkflowsService") as mock_ws_cls:
-        mock_ws_cls.return_value.get_workflow.return_value = _mock_workflow(
-            "Failed", oom=True
-        )
+        mock_ws_cls.return_value.get_workflow.return_value = _mock_workflow("Failed", oom=True)
         reconcile()
 
     updated = get(get_model=ArgoJob, primary_key=job.job_id)

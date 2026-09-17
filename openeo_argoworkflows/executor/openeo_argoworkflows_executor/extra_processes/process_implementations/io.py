@@ -1,6 +1,5 @@
 import logging
 import os
-import uuid
 from pathlib import Path
 from typing import Optional, Union
 
@@ -9,18 +8,17 @@ import pyproj
 import pystac_client
 import xarray as xr
 from odc.stac import stac_load
-from openeo_argoworkflows_executor.crs import _extract_crs
-from openeo_argoworkflows_executor.timeout import compute_with_timeout
 from openeo_pg_parser_networkx.pg_schema import BoundingBox, GeoJson, TemporalInterval
 from openeo_processes_dask.process_implementations.cubes._filter import filter_bbox
 from openeo_processes_dask.process_implementations.data_model import RasterCube
 from pystac.extensions import raster
 
+from openeo_argoworkflows_executor.crs import _extract_crs
+from openeo_argoworkflows_executor.timeout import compute_with_timeout
+
 __all__ = ["load_collection", "save_result"]
 
 logger = logging.getLogger(__name__)
-
-_PACKAGE_SAVE_RESULT_FORMATS = {"GTIFF", "COG", "NETCDF", "ZARR"}
 
 
 def load_collection(
@@ -197,10 +195,16 @@ def load_collection(
                 "B11",
                 "B12",
             }
-            data_assets = [a for a in available_assets if a in known_data_assets]
+            data_assets = [
+                a for a in available_assets if a in known_data_assets
+            ]
             if not data_assets:
                 # Fallback: exclude known non-data assets, keep everything else
-                data_assets = [a for a in available_assets if a not in non_data_assets]
+                data_assets = [
+                    a
+                    for a in available_assets
+                    if a not in non_data_assets
+                ]
             if data_assets:
                 load_kwargs["bands"] = data_assets
                 logger.info(f"Loading auto-detected bands/assets: {data_assets}")
@@ -242,148 +246,190 @@ def save_result(
     options: Optional[dict] = None,
 ):
     """Save the result data cube to a file."""
-    options = dict(options or {})
-    fmt_upper = format.upper()
 
-    use_package_writer = options.pop("use_package_save_result", False)
-    if fmt_upper in _PACKAGE_SAVE_RESULT_FORMATS or use_package_writer:
-        return _save_result_with_process_package(data, fmt_upper, options)
+    def clean_unused_coordinates(ds):
+        """
+        Remove all coordinates that are not used in the DataArray dimensions.
+        Preserve spatial_ref / crs_wkt which are CF grid_mapping variables.
+        """
+        used_dims = set()
+        for var in ds.dims:
+            used_dims.update(ds[var].dims)
 
-    supported = ", ".join(sorted(_PACKAGE_SAVE_RESULT_FORMATS))
-    raise ValueError(
-        f"Data can't be transformed into the requested output format '{format}'. "
-        f"Supported formats: {supported}"
+        # Always keep CF grid_mapping coordinates so QGIS/GDAL can read the CRS
+        keep = {"spatial_ref", "crs_wkt"}
+
+        for coord in list(ds.coords):
+            if coord not in used_dims and coord not in keep:
+                ds = ds.drop_vars(coord)
+        return ds
+
+    import uuid
+
+    logger.info(
+        f"Saving result data with shape: {data.shape if hasattr(data, 'shape') else 'unknown'}"
     )
+    logger.info(f"Data attrs: {data.attrs}")
 
+    _id = str(uuid.uuid4())
 
-def _save_result_with_process_package(
-    data: RasterCube,
-    fmt_upper: str,
-    options: dict,
-) -> str:
-    """Delegate richer output formats to openeo-processes-save-result.
+    # Get the results path from environment
+    results_path = os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results")
+    os.makedirs(results_path, exist_ok=True)
 
-    The standalone process returns STAC metadata. In argoworkflows, downstream
-    EOAP-CWL staging expects a local path, so this wrapper returns the first
-    local asset path referenced by that STAC output, falling back to the
-    collection JSON or output folder.
-    """
-    try:
-        from openeo_processes_save_result.save_result import (
-            save_result as package_save_result,
-        )
-    except ImportError as exc:
-        raise RuntimeError(
-            "Output format "
-            f"'{fmt_upper}' requires openeo-processes-save-result to be installed "
-            "in the executor image."
-        ) from exc
-
-    results_path = Path(os.environ.get("OPENEO_RESULTS_PATH", "/tmp/results"))
-    results_path.mkdir(parents=True, exist_ok=True)
-    output_folder = Path(
-        options.setdefault("output_folder", str(results_path / str(uuid.uuid4())))
-    )
-    collection_id = options.get("collection_id", "save_result")
-
-    cube = _as_dataset_for_save_result_package(data)
-
-    # Executor pods run in air-gapped environments where PySTAC cannot fetch
-    # remote STAC extension schemas (stac-extensions.github.io). Disable
-    # validation to prevent GetSchemaError in offline mode.
-    options = dict(options)
-    options.setdefault("skip_validation", True)
-
-    stac = package_save_result(data=cube, format=fmt_upper, options=options)
-
-    staged_path = _local_asset_path_from_stac(stac, output_folder)
-    if staged_path is not None:
-        logger.info(
-            "Successfully saved result via openeo-processes-save-result: %s",
-            staged_path,
-        )
-        return str(staged_path)
-
-    if fmt_upper == "ZARR" and output_folder.exists():
-        return str(output_folder)
-
-    collection_json = output_folder / f"{collection_id}.json"
-    if collection_json.exists():
-        return str(collection_json)
-
-    return str(output_folder)
-
-
-def _as_dataset_for_save_result_package(data: RasterCube) -> xr.Dataset:
-    if isinstance(data, xr.Dataset):
-        return data
+    destination = Path(results_path) / f"{_id}.nc"
 
     dim = data.openeo.band_dims[0] if data.openeo.band_dims else None
-    return data.to_dataset(
+
+    # Get CRS from rio accessor (rioxarray)
+    import rioxarray  # noqa - needed for .rio accessor
+    from pyproj import CRS as PyprojCRS
+
+    crs = None
+    if hasattr(data, "rio") and data.rio.crs is not None:
+        crs = data.rio.crs
+        logger.info(f"Got CRS from rio accessor: {crs}")
+    else:
+        # rioxarray couldn't detect CRS - check coordinate attrs (stackstac stores it there)
+        for coord_name in ["x", "y"]:
+            if coord_name in data.coords:
+                crs_str = data.coords[coord_name].attrs.get("crs")
+                if crs_str:
+                    try:
+                        crs = PyprojCRS.from_user_input(crs_str)
+                        logger.info(
+                            f"Got CRS from coord '{coord_name}' attr: {crs_str}"
+                        )
+                        break
+                    except Exception as e:
+                        logger.warning(f"Could not parse CRS from coord attr: {e}")
+
+    if crs is None and "crs" in data.attrs:
+        try:
+            crs = PyprojCRS.from_user_input(data.attrs["crs"])
+            logger.info(f"Got CRS from data attrs: {data.attrs['crs']}")
+        except Exception as e:
+            logger.warning(f"Could not parse CRS from data attrs: {e}")
+
+    # Ensure CRS is a proper pyproj CRS object if it came as string
+    if isinstance(crs, str):
+        try:
+            crs = PyprojCRS.from_user_input(crs)
+        except Exception as e:
+            logger.warning(f"Could not parse CRS string: {e}")
+            crs = None
+
+    # Write CRS to the data using rioxarray before converting to dataset
+    if crs is not None:
+        # write_crs embeds a proper spatial_ref grid_mapping variable (CF convention)
+        # which QGIS and rioxarray can read back correctly
+        data = data.rio.write_crs(crs)
+        logger.info(f"Wrote CRS to data: {data.rio.crs}")
+
+    out_data: xr.Dataset = data.to_dataset(
         dim=dim, name="name" if not dim else None, promote_attrs=True
     )
 
+    dtype = "float32"
+    comp = dict(zlib=True, complevel=5, dtype=dtype)
 
-def _local_asset_path_from_stac(stac: dict, output_folder: Path) -> Optional[Path]:
-    asset_refs = []
+    encoding = {var: comp for var in out_data.data_vars}
+    out_data = clean_unused_coordinates(out_data)
 
-    if stac.get("type") == "Feature":
-        asset_refs.extend(
-            (asset.get("href"), output_folder)
-            for asset in stac.get("assets", {}).values()
+    # Write CRS after cleaning so spatial_ref is not stripped
+    if crs is not None:
+        from pyproj import CRS as PyprojCRS
+
+        crs_obj = crs if isinstance(crs, PyprojCRS) else PyprojCRS.from_user_input(crs)
+        crs_wkt = crs_obj.to_wkt()
+        epsg = crs_obj.to_epsg()
+
+        # Add spatial_ref as a scalar coordinate (CF convention grid_mapping variable)
+        # GDAL NetCDF driver reads crs_wkt + grid_mapping attr on variables
+        import numpy as np
+
+        # Get CF grid_mapping_name from pyproj
+        cf_params = crs_obj.to_cf()
+        cf_grid_mapping_name = cf_params.get("grid_mapping_name", "latitude_longitude")
+
+        spatial_ref_attrs = {
+            "crs_wkt": crs_wkt,
+            "spatial_ref": crs_wkt,  # GDAL also checks this key
+            "grid_mapping_name": cf_grid_mapping_name,
+        }
+        # Add all CF parameters so GDAL can fully reconstruct the CRS
+        spatial_ref_attrs.update(cf_params)
+
+        if epsg:
+            spatial_ref_attrs["EPSG"] = epsg
+
+        logger.info(
+            f"CRS prepared (CF: {cf_grid_mapping_name}, EPSG: {epsg}) — will write via netCDF4"
         )
 
-    for link in stac.get("links", []):
-        if link.get("rel") != "item":
-            continue
-        href = link.get("href")
-        if not href:
-            continue
-        item_path = _resolve_local_href(href, output_folder)
-        if item_path is None or not item_path.exists() or item_path.suffix != ".json":
-            continue
-        try:
-            import json
+    # Add standard_name to x/y so GDAL recognises them as projected axes
+    # even before reading spatial_ref
+    if crs is not None:
+        if "x" in out_data.coords:
+            out_data["x"].attrs["standard_name"] = "projection_x_coordinate"
+            out_data["x"].attrs["long_name"] = "x coordinate of projection"
+        if "y" in out_data.coords:
+            out_data["y"].attrs["standard_name"] = "projection_y_coordinate"
+            out_data["y"].attrs["long_name"] = "y coordinate of projection"
 
-            with open(item_path) as f:
-                item = json.load(f)
-        except Exception as exc:
-            logger.warning("Could not read STAC item %s: %s", item_path, exc)
-            continue
-        asset_refs.extend(
-            (asset.get("href"), item_path.parent)
-            for asset in item.get("assets", {}).values()
-        )
+    # Restore reduced temporal dimensions so raster2stac can process it
+    # Must run BEFORE attr stripping, which deletes the dict-typed reduced_dimensions_min_values
+    reduced_mins = out_data.attrs.get("reduced_dimensions_min_values", {})
+    for dim_name, min_val in reduced_mins.items():
+        if dim_name not in out_data.dims:
+            # Convert string datetimes back to datetime64 for temporal dimensions
+            if dim_name in ("t", "time", "date", "DATE") and isinstance(min_val, str):
+                min_val = np.datetime64(min_val)
+            out_data = out_data.expand_dims({dim_name: [min_val]})
+            # Set openeo attrs so raster2stac recognizes the temporal dimension
+            if dim_name in ("t", "time", "date", "DATE"):
+                out_data.attrs["openeo_temporal_dims"] = [dim_name]
 
-    items_dir = output_folder / "items"
-    if items_dir.exists():
-        for item_path in sorted(items_dir.glob("*.json")):
-            try:
-                import json
+    # Remove attrs that are not netCDF-serializable (dicts, objects, etc.)
+    # e.g. reduced_dimensions_min_values is a dict set by reduce_dimension
+    valid_types = (str, int, float, bytes, list, tuple, np.ndarray, np.generic)
+    for key in list(out_data.attrs):
+        if not isinstance(out_data.attrs[key], valid_types):
+            logger.debug(f"Dropping non-serializable dataset attr '{key}': {type(out_data.attrs[key])}")
+            del out_data.attrs[key]
+    for var in out_data.data_vars:
+        for key in list(out_data[var].attrs):
+            if not isinstance(out_data[var].attrs[key], valid_types):
+                logger.debug(f"Dropping non-serializable attr '{key}' on '{var}': {type(out_data[var].attrs[key])}")
+                del out_data[var].attrs[key]
 
-                with open(item_path) as f:
-                    item = json.load(f)
-            except Exception as exc:
-                logger.warning("Could not read STAC item %s: %s", item_path, exc)
-                continue
-            asset_refs.extend(
-                (asset.get("href"), item_path.parent)
-                for asset in item.get("assets", {}).values()
-            )
+    logger.info(f"Writing netCDF to: {destination}")
+    compute_timeout = int(os.environ.get("OPENEO_COMPUTE_TIMEOUT", "600"))
+    compute_with_timeout(out_data.to_netcdf, path=destination, encoding=encoding, timeout=compute_timeout)
 
-    for href, base in asset_refs:
-        path = _resolve_local_href(href, base)
-        if path is not None and path.exists():
-            return path
+    # Re-open with netCDF4 to fix spatial_ref: xarray writes scalar coords as
+    # data variables with a dimension, but GDAL needs a true dimensionless variable
+    if crs is not None:
+        import netCDF4
 
-    return None
+        with netCDF4.Dataset(destination, "a") as nc:
+            # Remove xarray's broken spatial_ref if present, recreate properly
+            if "spatial_ref" in nc.variables:
+                # netCDF4 can't delete variables, so just clear and rewrite attrs
+                sr = nc.variables["spatial_ref"]
+            else:
+                sr = nc.createVariable("spatial_ref", "i4")
+            sr.assignValue(0)
+            for k, v in spatial_ref_attrs.items():
+                try:
+                    setattr(sr, k, v)
+                except Exception:
+                    pass
+            # Ensure grid_mapping points to spatial_ref on all data variables
+            for varname in nc.variables:
+                if varname not in ("x", "y", "time", "spatial_ref"):
+                    nc.variables[varname].grid_mapping = "spatial_ref"
+        logger.info("Wrote spatial_ref as dimensionless CF grid_mapping variable")
 
-
-def _resolve_local_href(href: Optional[str], base: Path) -> Optional[Path]:
-    if not href or "://" in href:
-        return None
-
-    path = Path(href)
-    if not path.is_absolute():
-        path = base / href.lstrip("./")
-    return path
+    logger.info(f"Successfully saved result to: {destination}")
+    return str(destination)
