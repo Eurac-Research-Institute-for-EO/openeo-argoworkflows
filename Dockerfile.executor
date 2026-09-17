@@ -57,11 +57,49 @@ RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_a
     chmod +x $VIRTUAL_ENV/bin/openeo_executor
 
 # Install Calrissian without its dependency pins so it cannot downgrade the
-# Zarr v3 executor stack through typing-extensions==4.8.0.
+# Zarr v3 executor stack through typing-extensions==4.8.0. The pyproject pins
+# the rest of Calrissian's dependency list to the exact versions it asks for,
+# so --no-deps leaves a consistent environment.
 RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
+
+# typing-extensions is the one Calrissian pin we cannot honour: it wants
+# ==4.8.0, zarr 3 needs >=4.12. Relax that single requirement in Calrissian's
+# installed metadata.
+#
+# This matters because calrissian/version.py does:
+#
+#     try:
+#         pkg = pkg_resources.require(package_name)
+#     except pkg_resources.DistributionNotFound:
+#
+# It catches DistributionNotFound but NOT VersionConflict. Any version mismatch
+# in its declared requirements therefore escapes package_version(), propagates
+# out of calrissian.main (which we call in-process from run_cwl), and fails the
+# job with "Calrissian execution error". A missing distribution is survivable;
+# a mismatched one is not.
+# The dist-info is located through importlib.metadata rather than a glob:
+# $VIRTUAL_ENV/lib/ contains both python3.12 and a python3.1 symlink, so a
+# glob matches twice and yields a malformed path.
+RUN cd / && $VIRTUAL_ENV/bin/python -c "\
+import importlib.metadata as md, pathlib; \
+p = pathlib.Path(str(md.distribution('calrissian')._path)) / 'METADATA'; \
+s = p.read_text(); \
+old = 'Requires-Dist: typing-extensions==4.8.0'; \
+new = 'Requires-Dist: typing-extensions>=4.8.0'; \
+assert old in s, 'calrissian no longer pins typing-extensions==4.8.0 - drop this patch'; \
+p.write_text(s.replace(old, new)); \
+print('relaxed:', new)"
 
 # Verify the entry point exists
 RUN which openeo_executor
+
+# Guard the Calrissian version lookup described above. Run from / so the
+# package directory is not on sys.path. This fails the build on any
+# VersionConflict between Calrissian's declared pins and what is installed,
+# rather than letting the first CWL job discover it.
+RUN cd / && $VIRTUAL_ENV/bin/python -c "\
+from calrissian.version import version; \
+print('calrissian version lookup OK:', version())"
 
 ########################################################################################################################
 FROM python:${PYTHON_VERSION}-slim-bookworm AS prod
