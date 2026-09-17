@@ -34,7 +34,7 @@ class TestRunUdf:
     def test_python_runtime_delegates_upstream(self):
         """Python UDFs must reach the upstream openeo_processes_dask
         implementation — our registration shadows it, it must not be
-        rejected (#173)."""
+        rejected (#159, #173)."""
         upstream = MagicMock(return_value="cube")
         with patch.object(_cwl, "_upstream_run_udf", upstream, create=True), \
              patch.object(_cwl, "run_cwl") as mock_cwl:

@@ -36,22 +36,19 @@ ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 RUN apt-get update && apt-get install -y --no-install-recommends g++ git && rm -rf /var/lib/apt/lists/* && \
     git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-# Export dependencies from poetry lock, exclude gdal (installed from conda-forge)
-# and packages that declare the gdal extra, then install via pip. This avoids
-# poetry/pip trying to replace the conda-forge GDAL library and Python bindings.
+# Export dependencies from poetry lock and install via pip. Only gdal is
+# excluded: it comes from conda-forge above, and letting pip install the PyPI
+# bindings would replace the library they were built against.
 #
-# openeo-processes-save-result depends on openeo-processes-dask @ v2026.7.1-eurac-dev.2
-# (tag), but poetry export resolves our own openeo-processes-dask dep to the commit
-# hash. Pip sees two different Git references for the same package and refuses.
-# Workaround: install both direct Git packages with --no-deps after the main install;
-# all their transitive deps except gdal are already included in the core export.
+# Everything else, including the direct Git dependencies, comes straight from
+# the lock at its resolved commit. Do NOT reintroduce a --no-deps install at a
+# hardcoded tag here: that bypasses the lock, so pyproject and the image can
+# silently disagree about which revision ships (they did -- pyproject said
+# dev.2 while the image installed dev.5).
 RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
-    grep -Ev "^(gdal|openeo-processes-dask|openeo-processes-save-result)" /tmp/requirements.txt > /tmp/requirements-core.txt && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-core.txt && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir --no-deps \
-        "openeo-processes-dask @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git@v2026.7.1-eurac-dev.5" \
-        "openeo-processes-save-result @ git+https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-save-result.git@v2026.7.1-eurac-dev.3" && \
-    rm /tmp/requirements.txt /tmp/requirements-core.txt
+    grep -v "^gdal==" /tmp/requirements.txt > /tmp/requirements-no-gdal.txt && \
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-no-gdal.txt && \
+    rm /tmp/requirements.txt /tmp/requirements-no-gdal.txt
 
 # Create the openeo_executor CLI entry point script directly.
 # Avoids pip install . which triggers poetry-core's path validation bug
@@ -60,11 +57,49 @@ RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_a
     chmod +x $VIRTUAL_ENV/bin/openeo_executor
 
 # Install Calrissian without its dependency pins so it cannot downgrade the
-# Zarr v3 executor stack through typing-extensions==4.8.0.
+# Zarr v3 executor stack through typing-extensions==4.8.0. The pyproject pins
+# the rest of Calrissian's dependency list to the exact versions it asks for,
+# so --no-deps leaves a consistent environment.
 RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
+
+# typing-extensions is the one Calrissian pin we cannot honour: it wants
+# ==4.8.0, zarr 3 needs >=4.12. Relax that single requirement in Calrissian's
+# installed metadata.
+#
+# This matters because calrissian/version.py does:
+#
+#     try:
+#         pkg = pkg_resources.require(package_name)
+#     except pkg_resources.DistributionNotFound:
+#
+# It catches DistributionNotFound but NOT VersionConflict. Any version mismatch
+# in its declared requirements therefore escapes package_version(), propagates
+# out of calrissian.main (which we call in-process from run_cwl), and fails the
+# job with "Calrissian execution error". A missing distribution is survivable;
+# a mismatched one is not.
+# The dist-info is located through importlib.metadata rather than a glob:
+# $VIRTUAL_ENV/lib/ contains both python3.12 and a python3.1 symlink, so a
+# glob matches twice and yields a malformed path.
+RUN cd / && $VIRTUAL_ENV/bin/python -c "\
+import importlib.metadata as md, pathlib; \
+p = pathlib.Path(str(md.distribution('calrissian')._path)) / 'METADATA'; \
+s = p.read_text(); \
+old = 'Requires-Dist: typing-extensions==4.8.0'; \
+new = 'Requires-Dist: typing-extensions>=4.8.0'; \
+assert old in s, 'calrissian no longer pins typing-extensions==4.8.0 - drop this patch'; \
+p.write_text(s.replace(old, new)); \
+print('relaxed:', new)"
 
 # Verify the entry point exists
 RUN which openeo_executor
+
+# Guard the Calrissian version lookup described above. Run from / so the
+# package directory is not on sys.path. This fails the build on any
+# VersionConflict between Calrissian's declared pins and what is installed,
+# rather than letting the first CWL job discover it.
+RUN cd / && $VIRTUAL_ENV/bin/python -c "\
+from calrissian.version import version; \
+print('calrissian version lookup OK:', version())"
 
 ########################################################################################################################
 FROM python:${PYTHON_VERSION}-slim-bookworm AS prod
