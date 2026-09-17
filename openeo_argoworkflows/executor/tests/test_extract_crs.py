@@ -5,8 +5,9 @@ Priority order: proj:wkt2 > proj:epsg > proj:code > default EPSG:4326
 """
 import importlib.util
 import pathlib
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def _load_crs_module():
@@ -30,6 +31,7 @@ def _make_item(properties: dict) -> MagicMock:
 # --- proj:wkt2 present ---
 def test_extract_crs_from_wkt2():
     import pyproj
+
     mod = _load_crs_module()
     wkt = pyproj.CRS.from_epsg(3035).to_wkt()
     item = _make_item({"proj:wkt2": wkt})
@@ -64,6 +66,7 @@ def test_extract_crs_defaults_to_4326():
 # --- priority: wkt2 wins over epsg ---
 def test_extract_crs_wkt2_takes_priority_over_epsg():
     import pyproj
+
     mod = _load_crs_module()
     wkt = pyproj.CRS.from_epsg(3035).to_wkt()
     item = _make_item({"proj:wkt2": wkt, "proj:epsg": 32632})

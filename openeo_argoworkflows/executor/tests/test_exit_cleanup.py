@@ -19,7 +19,6 @@ from openeo_argoworkflows_executor.cli import _close_dask
 
 
 class TestCloseDask:
-
     def test_none_args_are_noop(self):
         _close_dask(None, None, None)
 
@@ -60,6 +59,7 @@ class TestSuccessPathHardExit:
 
     def test_execute_ends_with_hard_exit(self):
         import inspect
+
         from openeo_argoworkflows_executor import cli
 
         src = inspect.getsource(cli)

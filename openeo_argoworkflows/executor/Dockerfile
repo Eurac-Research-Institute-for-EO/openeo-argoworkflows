@@ -1,7 +1,7 @@
 FROM python:3.11-slim as base
 
 WORKDIR /opt
-ARG POETRY_VERSION="1.8.3"
+ARG POETRY_VERSION="2.4.1"
 
 ENV POETRY_VIRTUALENVS_IN_PROJECT 1
 ENV POETRY_HOME=/opt/poetry
@@ -16,6 +16,10 @@ RUN python3 -m venv $VIRTUAL_ENV && \
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
 RUN poetry install --only main
+
+# Install Calrissian without its dependency pins so it cannot downgrade the
+# Zarr v3 executor stack through typing-extensions==4.8.0.
+RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
 ########################################################################################################################
 FROM python:3.11-slim-bookworm AS prod
 

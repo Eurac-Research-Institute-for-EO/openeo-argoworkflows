@@ -8,16 +8,16 @@ _BBOX_KEYS = ("bbox", "spatial_extent")
 def _bbox_from_dict(d: dict):
     """Return a SimpleNamespace with .west/.south/.east/.north from a dict, or None."""
     if isinstance(d, dict) and all(k in d for k in ("west", "south", "east", "north")):
-        return SimpleNamespace(west=d["west"], south=d["south"], east=d["east"], north=d["north"])
+        return SimpleNamespace(
+            west=d["west"], south=d["south"], east=d["east"], north=d["north"]
+        )
     return None
 
 
 def get_pg_bounding_box(process_graph: dict):
     graph = OpenEOProcessGraph(pg_data=process_graph)
 
-    load_calls = [
-        value for key, value in graph.nodes if "load_" in value["process_id"]
-    ]
+    load_calls = [value for key, value in graph.nodes if "load_" in value["process_id"]]
     for call in load_calls:
         if "spatial_extent" in call["resolved_kwargs"]:
             return call["resolved_kwargs"]["spatial_extent"]
@@ -35,7 +35,6 @@ def get_pg_bounding_box(process_graph: dict):
 
 
 def derive_sub_graph(cell, process_graph: dict):
-
     west, south, east, north = cell[2].bounds
     tile_bbox = {"west": west, "east": east, "south": south, "north": north}
 
