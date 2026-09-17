@@ -16,20 +16,20 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from openeo_argoworkflows_executor.http import post_json, HTTP_TIMEOUT
+from openeo_argoworkflows_executor.http_utils import post_json, HTTP_TIMEOUT
 
 
 class TestPostJson:
 
     def test_passes_timeout_to_requests(self):
-        with patch("openeo_argoworkflows_executor.http.requests") as req:
+        with patch("openeo_argoworkflows_executor.http_utils.requests") as req:
             post_json("https://stac.example/collections", {"id": "c1"})
         req.post.assert_called_once_with(
             "https://stac.example/collections", json={"id": "c1"}, timeout=HTTP_TIMEOUT
         )
 
     def test_returns_response(self):
-        with patch("openeo_argoworkflows_executor.http.requests") as req:
+        with patch("openeo_argoworkflows_executor.http_utils.requests") as req:
             req.post.return_value = MagicMock(status_code=201)
             r = post_json("https://stac.example/x", {})
         assert r.status_code == 201
@@ -37,7 +37,7 @@ class TestPostJson:
     def test_exceptions_propagate(self):
         # Callers wrap publishing in try/except — the helper must not swallow,
         # so a broken STAC API still triggers the callers' fallback paths.
-        with patch("openeo_argoworkflows_executor.http.requests") as req:
+        with patch("openeo_argoworkflows_executor.http_utils.requests") as req:
             req.post.side_effect = ConnectionError("dead")
             with pytest.raises(ConnectionError):
                 post_json("https://stac.example/x", {})
@@ -69,5 +69,5 @@ class TestNoBarePostsRemain:
         ]
         assert not offenders, (
             f"{module} lines {offenders}: bare requests.<verb> — "
-            "use openeo_argoworkflows_executor.http.post_json (has timeout, #147)"
+            "use openeo_argoworkflows_executor.http_utils.post_json (has timeout, #147)"
         )
