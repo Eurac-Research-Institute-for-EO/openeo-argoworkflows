@@ -119,3 +119,5 @@ class TestCreateCwlStac:
             assert item1["type"] == "Feature"
             assert item1["collection"] == "test-job-123"
             assert "output.txt" in item1["assets"]
+
+

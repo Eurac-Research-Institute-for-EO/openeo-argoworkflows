@@ -1,50 +1,32 @@
-ARG PYTHON_VERSION="3.12"
-ARG CONDA_PYTHON_VERSION="3.12"
-ARG MICROMAMBA_VERSION="2.3.3"
-FROM mambaorg/micromamba:${MICROMAMBA_VERSION} AS micromamba
-
-FROM python:${PYTHON_VERSION}-slim-bookworm AS base
+FROM python:3.11-slim-bookworm AS base
 
 WORKDIR /opt
-ARG CONDA_PYTHON_VERSION="3.12"
-ARG POETRY_VERSION="2.4.1"
-ARG GDAL_VERSION="3.13.1"
+ARG POETRY_VERSION="1.8.3"
 
 ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 ENV POETRY_HOME=/opt/poetry
 ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
-ENV CONDA_PREFIX=${VIRTUAL_ENV}
-ENV MAMBA_ROOT_PREFIX=/opt/micromamba
-ENV LD_LIBRARY_PATH=${VIRTUAL_ENV}/lib
-ENV GDAL_DATA=${VIRTUAL_ENV}/share/gdal
-ENV PROJ_DATA=${VIRTUAL_ENV}/share/proj
-
-COPY --from=micromamba /usr/bin/micromamba /usr/local/bin/micromamba
 
 COPY ./openeo_argoworkflows/executor/README.md ./openeo_argoworkflows/executor/pyproject.toml ./openeo_argoworkflows/executor/poetry.lock /opt/
 
-RUN micromamba create -y -p $VIRTUAL_ENV --override-channels -c conda-forge \
-        "python=${CONDA_PYTHON_VERSION}" \
-        "gdal=${GDAL_VERSION}" \
-        pip && \
-    micromamba clean -a -y && \
+RUN python3 -m venv $VIRTUAL_ENV && \
     $VIRTUAL_ENV/bin/pip install -U pip setuptools && \
-    $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION} poetry-plugin-export
+    $VIRTUAL_ENV/bin/pip install poetry==${POETRY_VERSION}
 
 ENV PATH="${POETRY_HOME}/bin:${VIRTUAL_ENV}/bin:${PATH}"
 
-RUN apt-get update && apt-get install -y --no-install-recommends g++ git && rm -rf /var/lib/apt/lists/* && \
+RUN apt-get update && apt-get install -y libexpat1 libgdal-dev g++ git && rm -rf /var/lib/apt/lists/* && \
     git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-# Export dependencies from poetry lock and install via pip. Only gdal is
-# excluded: it comes from conda-forge above, and letting pip install the PyPI
-# bindings would replace the library they were built against.
-#
-# Everything else, including the direct Git dependencies, comes straight from
-# the lock at its resolved commit. Do NOT reintroduce a --no-deps install at a
-# hardcoded tag here: that bypasses the lock, so pyproject and the image can
-# silently disagree about which revision ships (they did -- pyproject said
-# dev.2 while the image installed dev.5).
+# Install GDAL Python bindings matching system libgdal version.
+# xcube-eopf (from EURAC processes-dask) requires gdal, but the PyPI version
+# must match the system libgdal headers exactly.
+RUN GDAL_VERSION=$(gdal-config --version) && \
+    $VIRTUAL_ENV/bin/pip install --no-cache-dir "gdal==${GDAL_VERSION}"
+
+# Export dependencies from poetry lock, exclude gdal (already installed from system),
+# then install via pip. This avoids poetry trying to build gdal 3.12.2 against
+# system libgdal 3.6.2 headers which causes a version mismatch build failure.
 RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
     grep -v "^gdal==" /tmp/requirements.txt > /tmp/requirements-no-gdal.txt && \
     $VIRTUAL_ENV/bin/pip install --no-cache-dir -r /tmp/requirements-no-gdal.txt && \
@@ -56,15 +38,23 @@ RUN poetry export --only main --without-hashes -o /tmp/requirements.txt && \
 RUN printf '#!/opt/openeo_argoworkflows_executor/.venv/bin/python\nfrom openeo_argoworkflows_executor.cli import cli\ncli()\n' > $VIRTUAL_ENV/bin/openeo_executor && \
     chmod +x $VIRTUAL_ENV/bin/openeo_executor
 
-# Install Calrissian without its dependency pins so it cannot downgrade the
-# Zarr v3 executor stack through typing-extensions==4.8.0.
-RUN $VIRTUAL_ENV/bin/pip install --no-deps calrissian==0.18.1
+# Install raster2stac separately to avoid pystac version conflict with openeo-processes-dask
+# Install all raster2stac deps (except pystac) with full resolution, then raster2stac with --no-deps
+# Pin zarr<=2.18.7: openeo-processes-dask requires zarr<=2.18.7 and zarr 3.x fails to import
+# (needs typing_extensions>=4.12, but calrissian pins typing_extensions==4.8.0). zarr 2.18.7
+# in turn requires numcodecs<0.16. kerchunk<0.2.7 keeps it zarr-2 compatible (0.2.7+ needs zarr 3).
+RUN $VIRTUAL_ENV/bin/pip install boto3 dask fsspec h5netcdf h5py "kerchunk<0.2.7" netcdf4 numcodecs "numpy<2" \
+        pandas pydantic rasterio rio-stac rioxarray s3fs ujson xarray "zarr<=2.18.7" requests && \
+    $VIRTUAL_ENV/bin/pip install --no-deps raster2stac
+
+# Install CWL execution dependencies (calrissian for K8s CWL runner, cwltool for validation)
+RUN $VIRTUAL_ENV/bin/pip install calrissian cwltool
 
 # Verify the entry point exists
 RUN which openeo_executor
 
 ########################################################################################################################
-FROM python:${PYTHON_VERSION}-slim-bookworm AS prod
+FROM python:3.11-slim-bookworm AS prod
 
 ARG USER_ID=1000
 ARG GROUP_ID=1000
@@ -74,16 +64,14 @@ WORKDIR /opt/openeo_argoworkflows_executor
 COPY --from=base --chown=${USER_ID}:${GROUP_ID} /opt/openeo_argoworkflows_executor/.venv /opt/openeo_argoworkflows_executor/.venv
 COPY --chown=${USER_ID}:${GROUP_ID} ./openeo_argoworkflows/executor/openeo_argoworkflows_executor /opt/openeo_argoworkflows_executor
 
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libexpat1 libgdal32 nodejs && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g ${GROUP_ID} -o executor \
+RUN ln -sf /usr/local/bin/python /opt/openeo_argoworkflows_executor/.venv/bin/python \
+    && ln -sf /usr/local/bin/python3 /opt/openeo_argoworkflows_executor/.venv/bin/python3 \
+    && groupadd -g ${GROUP_ID} -o executor \
     && useradd -m -u ${USER_ID} -g ${GROUP_ID} -o -s /bin/bash executor
 
 ENV VIRTUAL_ENV=/opt/openeo_argoworkflows_executor/.venv
-ENV CONDA_PREFIX=${VIRTUAL_ENV}
-ENV LD_LIBRARY_PATH=${VIRTUAL_ENV}/lib
-ENV GDAL_DATA=${VIRTUAL_ENV}/share/gdal
-ENV PROJ_DATA=${VIRTUAL_ENV}/share/proj
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV DASK_GATEWAY_SERVER="http://traefik-openeo-dask-gateway.openeo.svc.cluster.local:80"
 ENV PYTHONPATH="/opt"
@@ -94,14 +82,6 @@ ENV PYTHONPATH="/opt"
 # at /user_workspaces. This symlink bridges the gap so Calrissian's
 # expected paths resolve correctly.
 RUN mkdir -p /mainctrfs && ln -s /user_workspaces /mainctrfs/user_workspaces
-
-# Distributed 2026.x dropped standalone dask-scheduler/dask-worker entry
-# points in favour of "dask scheduler" / "dask worker" subcommands, but
-# Dask Gateway still hardcodes the legacy names for scheduler/worker pods.
-# Create wrapper scripts to bridge the gap.
-RUN printf '#!/bin/bash\nexec dask scheduler "$@"\n' > $VIRTUAL_ENV/bin/dask-scheduler && \
-    printf '#!/bin/bash\nexec dask worker "$@"\n' > $VIRTUAL_ENV/bin/dask-worker && \
-    chmod +x $VIRTUAL_ENV/bin/dask-scheduler $VIRTUAL_ENV/bin/dask-worker
 
 USER ${USER_ID}
 

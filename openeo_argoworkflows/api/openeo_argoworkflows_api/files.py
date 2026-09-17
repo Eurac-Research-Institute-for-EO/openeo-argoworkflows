@@ -1,29 +1,22 @@
 import datetime
-import io
+import fsspec
 import json
 import re
-from os.path import splitext
-from pathlib import Path
-from typing import Optional
 
-import fsspec
-from fastapi import Depends
-from fastapi import File as apiFile
-from fastapi import Header, HTTPException, Request, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi import Depends, HTTPException, Request, UploadFile, File as apiFile
+from fastapi.responses import StreamingResponse, Response
+from pathlib import Path
+from pydantic import validator
+from pydantic.dataclasses import dataclass
+from os.path import splitext
+
+from typing import Optional
+from openeo_fastapi.api.models import FilesGetResponse, Link, File
+from openeo_fastapi.client.files import FilesRegister
+from openeo_fastapi.client.auth import User
+
 from openeo_argoworkflows_api.auth import ExtendedAuthenticator
 from openeo_argoworkflows_api.jobs import UserWorkspace
-from openeo_fastapi.api.models import File, FilesGetResponse, Link
-from openeo_fastapi.client.auth import User
-from openeo_fastapi.client.files import FilesRegister
-from pydantic import field_validator, model_validator
-from pydantic.dataclasses import dataclass
-
-
-# Resolve at call time so tests can patch ExtendedAuthenticator.validate.
-def _validate_auth(authorization: str = Header()):
-    return ExtendedAuthenticator.validate(authorization)
-
 
 fs = fsspec.filesystem(protocol="file")
 
@@ -34,25 +27,27 @@ class ByteRange:
     end: Optional[int]
     range: int = None
 
-    @field_validator("start", mode="before")
-    @classmethod
-    def set_start(cls, v):
+    @validator("start", pre=True, always=True)
+    def set_start(v):
         if v is None:
             return 0
         return v
 
-    @model_validator(mode="after")
-    def set_range(self):
-        if self.end is not None:
-            if not self.start < self.end:
-                raise ValueError(f"{self.end} must be greater than {self.start}")
-            self.range = self.end - self.start + 1
-        return self
+    @validator("range", pre=False, always=True)
+    def set_range(v, values):
+        if values["end"] is not None:
+            if not values["start"] < values["end"]:
+                raise ValueError(
+                    f"{values['end']} must be greater than {values['start']}"
+                )
+            return values["end"] - values["start"] + 1
+
 
 
 class ArgoFileRegister(FilesRegister):
     def __init__(self, settings, links) -> None:
         super().__init__(settings, links)
+
 
     def compile_byte_ranges(self, byte_range: str) -> list[ByteRange]:
         """Take the byte range string and return list of ranges."""
@@ -63,13 +58,12 @@ class ArgoFileRegister(FilesRegister):
         bytes_eval = lambda a: int(a) if a != "" else None
 
         ranges = [
-            ByteRange(
-                start=bytes_eval(x.split("-")[0]), end=bytes_eval(x.split("-")[1])
-            )
+            ByteRange(start=bytes_eval(x.split("-")[0]), end=bytes_eval(x.split("-")[1]))
             for x in re.findall(r, byte_range)
         ]
 
         return ranges
+
 
     def validate_path(self, path: str, user: User):
         """Does the give path exist in the user workspace?
@@ -81,53 +75,49 @@ class ArgoFileRegister(FilesRegister):
         absolute_path = user_workspace / path
         try:
             fs.exists(absolute_path)
+            if not fs.isfile(absolute_path):
+                raise HTTPException(
+                    status_code=405,
+                    detail=f"Path must lead to file, {absolute_path} resolves to a directory.",
+                )
         except FileNotFoundError:
-            raise HTTPException(
-                status_code=404, detail="File not found in user workspace."
-            )
+            raise HTTPException(status_code=404, detail="File not found in user workspace.")
 
         return absolute_path
+
 
     def file_header(
         self,
         path: str,
-        user: User = Depends(ExtendedAuthenticator.signed_url_or_validate),
+        user: User = Depends(ExtendedAuthenticator.signed_url_or_validate)
     ):
-        """Get the headers for a file (or directory served as tar)."""
+        """Get the headers for a file."""
 
         absolute_path = self.validate_path(path, user)
-        if fs.isfile(absolute_path):
-            return Response(
-                status_code=200,
-                headers={
-                    "Accept-Ranges": "bytes",
-                    "Content-Type": "application/octet-stream",
-                    "Content-Length": str(fs.size(absolute_path)),
-                },
-            )
-        # Directory — served as a tar archive
         return Response(
             status_code=200,
             headers={
-                "Content-Type": "application/x-tar",
+                "Accept-Ranges": "bytes",
+                "Content-Type": "application/octet-stream",
+                "Content-Length": str(fs.size(absolute_path)),
             },
         )
+
 
     def download_file(
         self,
         path: str,
         request: Request,
-        user: User = Depends(ExtendedAuthenticator.signed_url_or_validate),
+        user: User = Depends(ExtendedAuthenticator.signed_url_or_validate)
     ):
         """
         Download a file from the workspace.
-        Directories are streamed as tar archives.
         """
 
         def iterfile(path: Path, range: ByteRange = None):
             # 1024 * 1024 is roughly 1Mb * this by the number of Mb we want to try and serve
-            chunk_size = (1024 * 1024) * 20
-
+            chunk_size = ( 1024 * 1024 ) * 20
+            
             with open(path, mode="rb") as file_like:
                 if range:
                     file_like.seek(range.start)
@@ -140,32 +130,7 @@ class ArgoFileRegister(FilesRegister):
                     while chunk := file_like.read(chunk_size):
                         yield chunk
 
-        def tar_stream(path: Path):
-            import tarfile
-
-            chunk_size = (1024 * 1024) * 4
-            buffer = io.BytesIO()
-            tar = tarfile.open(mode="w", fileobj=buffer)
-            try:
-                tar.add(path, arcname=path.name)
-            finally:
-                tar.close()
-            buffer.seek(0)
-            while chunk := buffer.read(chunk_size):
-                yield chunk
-
         absolute_path = self.validate_path(path, user)
-
-        # Serve directories as tar archives
-        if not fs.isfile(absolute_path):
-            return StreamingResponse(
-                status_code=200,
-                content=tar_stream(absolute_path),
-                media_type="application/x-tar",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{path.replace("/", "_")}.tar"',
-                },
-            )
 
         # Set media type for the file
         extention = splitext(absolute_path)[1]
@@ -212,7 +177,7 @@ class ArgoFileRegister(FilesRegister):
                     content=iterfile(absolute_path, range),
                     media_type=mime_type,
                     headers={
-                        "Content-Range": f"{range.start}-{range.end}/{fsize}",
+                        "Content-Range": "{}-{}/{}".format(range.start, range.end, fsize),
                     },
                 )
         else:
@@ -220,22 +185,27 @@ class ArgoFileRegister(FilesRegister):
                 status_code=200, content=iterfile(absolute_path), media_type=mime_type
             )
 
-    def list_files(self, limit: int = None, user: User = Depends(_validate_auth)):
+
+    def list_files(
+            self,
+            limit: int = None,
+            user: User = Depends(ExtendedAuthenticator.validate)
+    ):
         """
         List all files in the workspace
         """
         user_workspace = UserWorkspace(
-            root_dir=self.settings.OPENEO_WORKSPACE_ROOT, user_id=str(user.user_id)
+            root_dir=self.settings.OPENEO_WORKSPACE_ROOT,
+            user_id=str(user.user_id)
         )
 
-        files = [
+        files = [ 
             File(
                 # Path wants to be arelative to the files_directory
                 path=str(file).removeprefix(str(user_workspace.files_directory))[1:],
                 size=fs.size(file),
                 modified=fs.modified(file),
-            )
-            for file in fs.ls(user_workspace.files_directory)
+            ) for file  in fs.ls(user_workspace.files_directory) 
         ]
 
         if limit:
@@ -252,18 +222,24 @@ class ArgoFileRegister(FilesRegister):
                 )
             ],
         )
+    
 
     async def upload_file(
-        self, path: str, request: Request, user: User = Depends(_validate_auth)
+        self,
+        path: str,
+        request: Request,
+        user: User = Depends(ExtendedAuthenticator.validate)
     ):
+        
         space = UserWorkspace(
-            root_dir=self.settings.OPENEO_WORKSPACE_ROOT, user_id=str(user.user_id)
+            root_dir=self.settings.OPENEO_WORKSPACE_ROOT,
+            user_id=str(user.user_id)
         )
-
-        split_path = [part for part in path.split("/") if "/" in path]
+        
+        split_path = [ part for part in path.split("/") if "/" in path ]
 
         if split_path:
-            subdir = "".join([part + "/" for part in split_path[:-1] if part])
+            subdir = "".join( [ part + "/" for part in split_path[:-1] if part ] )
             upload_dir = space.files_directory / subdir
             if not fs.exists(upload_dir):
                 fs.mkdir(upload_dir)
@@ -282,44 +258,52 @@ class ArgoFileRegister(FilesRegister):
 
             else:
                 for file in form_data.values():
+
                     with open(upload_dest, "wb") as f:
                         while contents := file.file.read(1024 * 1024):
                             f.write(contents)
 
             size_bytes = fs.stat(upload_dest)["size"]
             # Formatted for RFC3339
-            modified_time = (
-                datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[
-                    :-4
-                ]
-                + "Z"
-            )
-
+            modified_time = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-4] + "Z"
+        
         except Exception:
             raise HTTPException(
                 status_code=500,
                 detail="The server encountered an error trying to upload the file.",
             )
-
+        
         return Response(
             status_code=200,
-            content=json.dumps(
-                {"path": path, "size": size_bytes, "modified": modified_time}
-            ),
+            content=json.dumps({
+                "path": path,
+                "size": size_bytes,
+                "modified": modified_time
+            })
         )
+    
 
-    async def delete_file(self, path: str, user: User = Depends(_validate_auth)):
+    async def delete_file(
+        self,
+        path: str,
+        user: User = Depends(ExtendedAuthenticator.validate)
+    ):
+        
         space = UserWorkspace(
-            root_dir=self.settings.OPENEO_WORKSPACE_ROOT, user_id=str(user.user_id)
+            root_dir=self.settings.OPENEO_WORKSPACE_ROOT,
+            user_id=str(user.user_id)
         )
-
+        
         absolute_path = space.files_directory / path
 
         if fs.exists(absolute_path):
             fs.rm_file(absolute_path)
-
+       
             return Response(
                 status_code=204,
-                content="The file has been successfully deleted at the back-end.",
+                content="The file has been successfully deleted at the back-end."
             )
-        return Response(status_code=404, content="File not found.")
+        return Response(
+            status_code=404,
+            content="File not found."
+        )

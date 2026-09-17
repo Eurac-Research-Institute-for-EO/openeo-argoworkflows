@@ -48,7 +48,6 @@ def _is_graph_cwl(cwl_path: Path) -> bool:
             return False
         # Confirm it's a top-level key (works for both JSON and YAML)
         import yaml
-
         doc = yaml.safe_load(text)
         return isinstance(doc, dict) and "$graph" in doc
     except Exception:
@@ -113,7 +112,6 @@ def _validate_cwl(cwl_path: Path) -> dict:
             errors.append(line.strip())
 
     return {"valid": False, "errors": errors}
-
 
 def _load_cwl_doc(cwl_path: Path) -> dict:
     """Load a CWL file as a dict, resolving $graph packages to the run entry.
@@ -239,7 +237,6 @@ def _find_stac_root(directory: Path) -> Optional[Path]:
                 if candidate.exists():
                     return candidate
     return None
-
 
 def _collect_calrissian_outputs(calrissian_outdir: Path, results_path: Path) -> list:
     """Copy Calrissian output files to the openEO results directory.
@@ -395,25 +392,17 @@ def run_cwl(
         # injects them into each CWL tool pod. Variables are read from the
         # executor pod's own environment (mounted from the cdse-s3-credentials
         # K8s Secret via the Helm chart).
-        _CDSE_ENV_VARS = (
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "AWS_ENDPOINT_URL_S3",
-        )
+        _CDSE_ENV_VARS = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ENDPOINT_URL_S3")
         pod_env_args = []
         if all(k in os.environ for k in _CDSE_ENV_VARS):
             pod_env = {k: os.environ[k] for k in _CDSE_ENV_VARS}
             pod_env_path = work_dir / "pod-env-vars.json"
             pod_env_path.write_text(json.dumps(pod_env))
             pod_env_args = ["--pod-env-vars", str(pod_env_path)]
-            logger.info(
-                f"Forwarding CDSE env vars to Calrissian tool pods: {list(pod_env.keys())}"
-            )
+            logger.info(f"Forwarding CDSE env vars to Calrissian tool pods: {list(pod_env.keys())}")
         else:
             missing = [k for k in _CDSE_ENV_VARS if k not in os.environ]
-            logger.warning(
-                f"CDSE S3 credentials incomplete (missing: {missing}) — tool pods may fail to access CDSE data"
-            )
+            logger.warning(f"CDSE S3 credentials incomplete (missing: {missing}) — tool pods may fail to access CDSE data")
 
         # Build Calrissian CLI args. We call calrissian.main.main()
         # in-process (not subprocess) so the monkey-patch above takes
@@ -481,7 +470,7 @@ def run_cwl(
             stac_path = Path(workspace_root) / "STAC"
             if stac_path.exists():
                 shutil.rmtree(stac_path)
-
+                
             # Copy from stac_root.parent so the STAC root and all item files
             # land directly at STAC/ — works for both flat outputs (parent ==
             # calrissian_outdir) and Directory-type outputs (parent is a subdir).
@@ -539,25 +528,20 @@ def run_cwl(
             except Exception as e:
                 logger.warning(f"S3 upload of CWL outputs skipped due to error: {e}")
 
-            logger.info(
-                f"CWL produced STAC root ({stac_root.name}) - restructured to {stac_path}"
-            )
+            logger.info(f"CWL produced STAC root ({stac_root.name}) - restructured to {stac_path}")
             collected_files = [str(f) for f in stac_path.rglob("*") if f.is_file()]
         else:
             # No STAC root -  flat file copy + generate STAC via stac_cwl.py
             collected_files = _collect_calrissian_outputs(
                 calrissian_outdir, Path(results_path)
             )
-            logger.info(
-                f"Collected {len(collected_files)} output files to {results_path}"
-            )
+            logger.info(f"Collected {len(collected_files)} output files to {results_path}")
         # Return output metadata for downstream processing
         return {
             "cwl_outputs": cwl_outputs,
             "collected_files": collected_files,
             "status": "completed",
         }
-
 
 def _upstream_run_udf(data=None, udf: str = "", runtime: str = "", context=None):
     """Call openeo_processes_dask's run_udf (Python UDFs etc.).
@@ -585,7 +569,7 @@ def run_udf(
     context: Optional[dict] = None,
     **kwargs,
 ):
-    """run_udf handler for EOAP-CWL runtime.
+    """run_udf handler for the EOAP-CWL runtime, delegating everything else.
 
     Maps run_udf parameters to run_cwl:
       udf     -> cwl  (the CWL document or URL)
@@ -594,30 +578,25 @@ def run_udf(
     If `data` is a file path string (returned by save_result), it is
     injected into CWL inputs as `openeo_data` so CWL tools can reference
     the staged file without needing an unresolvable from_node in context.
+
+    Non-CWL runtimes (e.g. Python UDFs) are handed to the upstream
+    openeo_processes_dask implementation. This registration shadows it, so
+    without the delegation Python UDFs are unreachable (#159).
     """
     if runtime.lower() != "eoap-cwl":
         return _upstream_run_udf(data=data, udf=udf, runtime=runtime, context=context)
 
     inputs = dict(context or {})
     if isinstance(data, str) and data.startswith("/"):
-        # Pass as a CWL object so Calrissian stages it into the tool pod's
+        # Pass as CWL File object so Calrissian stages it into the tool pod's
         # working directory. A plain string path won't work because CWL tool
         # containers only have the working-dir PVC mount, not /user_workspaces.
-        cwl_class = "Directory" if os.path.isdir(data) else "File"
-        inputs.setdefault(
-            "openeo_data", {"class": cwl_class, "location": f"file://{data}"}
-        )
-        logger.info(
-            "Injecting staged data as CWL %s input (openeo_data): %s",
-            cwl_class,
-            data,
-        )
+        inputs.setdefault("openeo_data", {"class": "File", "location": f"file://{data}"})
+        logger.info(f"Injecting staged data as CWL File input (openeo_data): {data}")
     elif data is not None:
         # Standalone CWL tool — data may be an xarray object from a preceding
         # process or a non-path string. Ignore it; use context for CWL inputs.
-        logger.info(
-            f"Ignoring non-path data argument (type={type(data).__name__}); using context inputs only"
-        )
+        logger.info(f"Ignoring non-path data argument (type={type(data).__name__}); using context inputs only")
 
     return run_cwl(
         cwl=udf,

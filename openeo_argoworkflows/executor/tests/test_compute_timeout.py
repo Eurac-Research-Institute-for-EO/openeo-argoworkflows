@@ -13,10 +13,9 @@ Given: OPENEO_COMPUTE_TIMEOUT env var is set
 When:  save_result triggers a computation
 Then:  timeout respects the env var value
 """
-import importlib.util
-import pathlib
 import time
-
+import pathlib
+import importlib.util
 import pytest
 
 
