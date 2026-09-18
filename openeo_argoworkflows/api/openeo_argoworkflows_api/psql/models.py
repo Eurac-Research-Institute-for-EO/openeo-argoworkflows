@@ -1,10 +1,11 @@
 from typing import Optional
+
 from openeo_fastapi.client.jobs import Job
-from openeo_fastapi.client.psql.settings import BASE
 from openeo_fastapi.client.psql.models import *
+from openeo_fastapi.client.psql.settings import BASE
+
 
 class ArgoJobORM(JobORM):
-
     workflowname = Column(VARCHAR, nullable=True)
     """The name of the argo workflow."""
 
@@ -13,8 +14,8 @@ class ArgoJobORM(JobORM):
 
 
 class ArgoJob(Job):
-
-    workflowname: Optional[str]
+    title: Optional[str] = None
+    workflowname: Optional[str] = None
     """The name of the argo workflow."""
 
     message: Optional[str] = None

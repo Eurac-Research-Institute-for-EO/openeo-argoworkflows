@@ -1,5 +1,11 @@
 # Issue #98: Mixed STAC Output — Root Cause & Fix
 
+> Current status: the executor no longer runs `raster2stac` directly from
+> `cli.py`. Save-result STAC is produced through `openeo-processes-save-result`,
+> and `cli.py` only normalizes and publishes package-generated STAC. The
+> analysis below documents the historical bug that existed when `cli.py` still
+> generated NetCDF STAC itself.
+
 ## What Was the Problem?
 
 When running a CWL job via `run_udf(EOAP-CWL)`, the final `STAC/` directory

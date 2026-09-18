@@ -38,7 +38,7 @@
 | `api/openeo_argoworkflows_api/specs/run_udf.json` | `run_udf` process spec (API) |
 | `executor/executor.py` | `_is_cwl_job()` — detects CWL jobs and bypasses Dask |
 | `executor/extra_processes/process_implementations/cwl.py` | `run_udf()` + `run_cwl()` — Calrissian invocation |
-| `executor/extra_processes/process_implementations/io.py` | `save_result()` — needs to return file path (not yet done) |
+| `executor/extra_processes/process_implementations/io.py` | `save_result()` — returns file path string via `openeo-processes-save-result` |
 | `executor/extra_processes/specs/run_udf.json` | `run_udf` process spec (executor) |
 | `executor/stac_cwl.py` | Generates STAC collection + items for CWL outputs |
 

@@ -117,7 +117,9 @@ class TestAutoWireInputs:
         cwl_inputs = _cwl._parse_cwl_inputs(
             {"inputs": {"job_id": "string", "user_id": "string"}}
         )
-        with patch.dict(os.environ, {"OPENEO_JOB_ID": "job-abc", "OPENEO_USER_ID": "user-xyz"}):
+        with patch.dict(
+            os.environ, {"OPENEO_JOB_ID": "job-abc", "OPENEO_USER_ID": "user-xyz"}
+        ):
             wired = _cwl._auto_wire_inputs(cwl_inputs, {})
         assert wired["job_id"] == "job-abc"
         assert wired["user_id"] == "user-xyz"
@@ -199,7 +201,9 @@ class TestRunCwlAutoWiringIntegration:
         monkeypatch.setenv("OPENEO_RESULTS_PATH", str(tmp_path / "results"))
         monkeypatch.setenv("OPENEO_USER_WORKSPACE", str(tmp_path / "ws"))
         monkeypatch.setenv("OPENEO_JOB_ID", "job-int-123")
-        monkeypatch.setattr(_cwl, "_validate_cwl", lambda p: {"valid": True, "errors": []})
+        monkeypatch.setattr(
+            _cwl, "_validate_cwl", lambda p: {"valid": True, "errors": []}
+        )
         monkeypatch.setattr(_cwl, "_write_inputs", _capture)
 
         with pytest.raises(_Stop):
