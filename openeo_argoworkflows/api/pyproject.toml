@@ -16,7 +16,7 @@ rq = "1.16.2"
 # EU: Process specs come from our own fork (v2026.7.1-eurac-dev.1).
 # The upstream openeo_fastapi 2026.6.1 uses openeo-processes-dask-slim
 # internally; we patch processes.py to point at our fork instead.
-openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.1"}
+openeo-processes-dask = {git = "https://github.com/Eurac-Research-Institute-for-EO/openeo-processes-dask.git", tag = "v2026.7.1-eurac-dev.7"}
 pyyaml = "*"
 boto3 = ">=1.26.0"
 
